@@ -1,8 +1,9 @@
 # Domain Model
 
-Phase 1 defines the smallest useful data model for later QKD simulations. The
-model uses dataclasses with explicit validation and JSON serialization. It does
-not execute BB84, E91, channel transmission, detection, or post-processing.
+The domain model defines the smallest useful data objects for QKD simulations.
+The model uses dataclasses with explicit validation and JSON serialization.
+Phase 2 adds ideal BB84 execution on top of these objects; physical channel
+loss, detector noise, Eve, E91, and decoy-state behavior remain future work.
 
 ## Scenario
 
@@ -39,7 +40,7 @@ rates and distances must be non-negative, and time windows must be positive.
 
 `Event` represents one sampled protocol round. It contains trace fields for
 Alice and Bob bases, emission, transmission, detection, sifting, errors, decoy
-intensity, Eve markers, and optional tags.
+intensity, Eve action/basis markers, and optional tags.
 
 `Metrics` stores aggregate counters and rates:
 
@@ -47,9 +48,11 @@ intensity, Eve markers, and optional tags.
 - QBER, loss, gain, raw detection rate, sifted key rate, and secret key rate.
 - abort flag, Eve summary fields, and optional CHSH value.
 
-`SimulationResult` stores the scenario, metrics, provenance, library version,
-and an optional event sample. Provenance includes the seed, scenario digest,
-library version, and RNG family.
+`SimulationResult` stores the scenario, metrics, provenance, Qiskit execution
+summary, library version, and an optional event sample. Provenance includes the
+seed, scenario digest, library version, and RNG family. The Qiskit summary is
+JSON-safe and stores counts, circuit metadata samples, primitive name, and
+execution sizing rather than raw `QuantumCircuit` objects.
 
 ## JSON
 
