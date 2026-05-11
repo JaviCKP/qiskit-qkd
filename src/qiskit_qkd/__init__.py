@@ -1,5 +1,27 @@
 """Qiskit-first tools for quantum key distribution simulations."""
 
-__version__ = "0.0.0"
+from ._version import __version__
+from .config import (
+    ChannelConfig,
+    DetectorConfig,
+    PostProcessingConfig,
+    ProtocolConfig,
+    Scenario,
+    SourceConfig,
+)
+from .reproducibility import make_rng
+from .results import Event, Metrics, SimulationResult
 
-__all__ = ["__version__"]
+__all__ = [
+    "ChannelConfig",
+    "DetectorConfig",
+    "Event",
+    "Metrics",
+    "PostProcessingConfig",
+    "ProtocolConfig",
+    "Scenario",
+    "SimulationResult",
+    "SourceConfig",
+    "__version__",
+    "make_rng",
+]

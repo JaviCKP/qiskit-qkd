@@ -1,8 +1,8 @@
 # Development
 
-This repository is in Phase 0. The goal is a small, installable Python package
-that can support later QKD work without committing to abstractions before the
-first protocol implementation exists.
+This repository is in Phase 1. The goal is a small, installable Python package
+with a validated domain model that can support later QKD work without committing
+to protocol implementations before the first circuit path exists.
 
 ## Phase 0 Scope
 
@@ -17,6 +17,22 @@ Phase 0 includes:
 
 Phase 0 does not include protocol classes, channels, detectors, attacks,
 simulation backends, or functional examples. Those belong to later phases.
+
+## Phase 1 Scope
+
+Phase 1 includes:
+
+- `Scenario`, `ProtocolConfig`, `SourceConfig`, `ChannelConfig`,
+  `DetectorConfig`, and `PostProcessingConfig`.
+- `Event`, `Metrics`, and `SimulationResult`.
+- Parameter validation with units in field names such as `distance_km`,
+  `clock_rate_hz`, and `gate_width_s`.
+- JSON round-tripping for scenarios and results.
+- Centralized seed handling through `make_rng`.
+- Aggregate-first result storage with an optional event sample.
+
+Phase 1 does not include physical channel behavior, protocol execution, Qiskit
+circuits, or CLI commands.
 
 ## Environment
 
@@ -70,7 +86,7 @@ Run a minimal import smoke check:
 python -c "import qiskit_qkd; print(qiskit_qkd.__version__)"
 ```
 
-There is no CLI command in Phase 0. CLI entry points should be added only when a
+There is no CLI command in Phase 1. CLI entry points should be added only when a
 real user-facing command exists.
 
 ## Reading Baseline

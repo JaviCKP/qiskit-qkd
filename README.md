@@ -1,12 +1,11 @@
 # qiskit-qkd
 
 `qiskit-qkd` is a Qiskit-first Python package for quantum key distribution
-simulations. The repository is currently in Phase 0: technical preparation,
-packaging, and baseline reading.
+simulations. The repository is currently in Phase 1: minimal domain model,
+validation, JSON serialization, and reproducible seed handling.
 
-No protocol simulation is implemented in this phase. The first functional
-example belongs to Phase 2, after the minimal domain model and BB84 circuit
-path exist.
+No protocol simulation is implemented yet. The first functional example belongs
+to Phase 2, after the BB84 Qiskit circuit path exists.
 
 ## Installation
 
@@ -39,5 +38,6 @@ python -m ruff check .
 python -c "import qiskit_qkd; print(qiskit_qkd.__version__)"
 ```
 
-See [docs/development.md](docs/development.md) for the Phase 0 scope, reading
-baseline, and command reference.
+See [docs/development.md](docs/development.md) for the development command
+reference. See [docs/domain_model.md](docs/domain_model.md) for the Phase 1
+data model.
