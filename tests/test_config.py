@@ -76,6 +76,13 @@ def test_make_rng_is_centralized_and_reproducible() -> None:
     assert [first.random() for _ in range(5)] == [second.random() for _ in range(5)]
 
 
+def test_vacuum_decoy_source_can_use_zero_mean_photon_number() -> None:
+    source = SourceConfig(kind="weak_coherent", mean_photon_number=0.0)
+
+    assert source.mean_photon_number == 0.0
+    assert source.to_dict()["mean_photon_number"] == 0.0
+
+
 @pytest.mark.parametrize(
     "factory",
     [
@@ -83,7 +90,7 @@ def test_make_rng_is_centralized_and_reproducible() -> None:
         lambda: Scenario(pulses=1, clock_rate_hz=0.0, seed=1),
         lambda: Scenario(pulses=1, clock_rate_hz=1.0, seed=-1),
         lambda: SourceConfig(emission_probability=1.1),
-        lambda: SourceConfig(mean_photon_number=0.0),
+        lambda: SourceConfig(mean_photon_number=-0.1),
         lambda: ChannelConfig(distance_km=-0.1),
         lambda: ChannelConfig(attenuation_db_km=-0.1),
         lambda: DetectorConfig(efficiency=-0.1),

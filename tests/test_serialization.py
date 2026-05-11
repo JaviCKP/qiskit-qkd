@@ -70,6 +70,7 @@ def test_simulation_result_json_contains_required_sections() -> None:
         bob_bit=1,
         sifted=True,
         error=False,
+        eve_basis="X",
         tags={"source": "unit-test"},
     )
     result = SimulationResult(
@@ -89,6 +90,7 @@ def test_simulation_result_json_contains_required_sections() -> None:
     assert payload["provenance"]["scenario_digest"] == scenario.digest()
     assert payload["provenance"]["backend"] == "aggregate-test"
     assert payload["event_sample"] == [event.to_dict()]
+    assert payload["event_sample"][0]["eve_basis"] == "X"
 
 
 def test_simulation_result_json_roundtrip_is_stable() -> None:
@@ -102,6 +104,35 @@ def test_simulation_result_json_roundtrip_is_stable() -> None:
     assert restored.to_dict() == result.to_dict()
     assert restored.summary() == result.summary()
     assert restored.to_dict()["event_sample"] == []
+
+
+def test_event_serialization_order_follows_round_lifecycle() -> None:
+    event = Event(index=0, time_s=0.0)
+
+    assert list(event.to_dict()) == [
+        "index",
+        "time_s",
+        "alice_bit",
+        "alice_basis",
+        "bob_basis",
+        "emitted",
+        "photon_number",
+        "intensity_class",
+        "transmitted",
+        "detected",
+        "detection_origin",
+        "bob_bit",
+        "detection_pattern",
+        "sifted",
+        "error",
+        "party",
+        "phase_slice",
+        "bsm_success",
+        "eve_action",
+        "eve_basis",
+        "eve_detectable",
+        "tags",
+    ]
 
 
 def test_event_sample_is_not_stored_by_default() -> None:

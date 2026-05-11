@@ -1,6 +1,6 @@
 # Examples
 
-This directory is prepared for future examples.
+This directory contains small executable examples.
 
-The first functional example is planned for Phase 2, after the minimal domain
-model and BB84 Qiskit circuit path are implemented.
+- `bb84_ideal.py`: runs ideal BB84 through real Qiskit circuits and prints a
+  `SimulationResult` summary plus the first circuit.

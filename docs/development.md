@@ -1,8 +1,7 @@
 # Development
 
-This repository is in Phase 1. The goal is a small, installable Python package
-with a validated domain model that can support later QKD work without committing
-to protocol implementations before the first circuit path exists.
+This repository is in Phase 2. The package has a validated domain model and a
+minimal ideal BB84 circuit path backed by Qiskit primitives.
 
 ## Phase 0 Scope
 
@@ -33,6 +32,23 @@ Phase 1 includes:
 
 Phase 1 does not include physical channel behavior, protocol execution, Qiskit
 circuits, or CLI commands.
+
+## Phase 2 Scope
+
+Phase 2 includes:
+
+- `CircuitFactory.bb84_prepare_measure()` for one-qubit BB84 circuits.
+- `QiskitSamplerBackend` with `StatevectorSampler` by default and bounded
+  primitive batches.
+- `BB84Protocol` with ideal source, channel, and detector assumptions.
+- BB84 sifting, QBER, and a simplified asymptotic key-rate formula.
+- JSON-safe Qiskit execution summaries on `SimulationResult`.
+- `examples/bb84_ideal.py`.
+- Architecture and parameter documentation.
+
+Phase 2 does not include fiber loss, dark counts, advanced detector behavior,
+Eve, decoy BB84, E91, dashboards, CLI commands, Aer noise adapters, or advanced
+transpilation.
 
 ## Environment
 
@@ -80,13 +96,19 @@ Run lint checks:
 python -m ruff check .
 ```
 
+Run the ideal BB84 demo:
+
+```powershell
+python examples/bb84_ideal.py
+```
+
 Run a minimal import smoke check:
 
 ```powershell
 python -c "import qiskit_qkd; print(qiskit_qkd.__version__)"
 ```
 
-There is no CLI command in Phase 1. CLI entry points should be added only when a
+There is no CLI command in Phase 2. CLI entry points should be added only when a
 real user-facing command exists.
 
 ## Reading Baseline

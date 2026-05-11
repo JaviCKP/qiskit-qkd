@@ -40,23 +40,36 @@ class Event:
 
     index: int
     time_s: float
+
+    # Preparation choices for prepare-and-measure protocols such as BB84.
     alice_bit: int | None = None
     alice_basis: str | None = None
     bob_basis: str | None = None
+
+    # Source and channel outcomes.
     emitted: bool = False
     photon_number: int = 0
+    intensity_class: str | None = None
     transmitted: bool = False
+
+    # Receiver and measurement outcomes.
     detected: bool = False
     detection_origin: str = "none"
     bob_bit: int | None = None
+    detection_pattern: str | None = None
+
+    # Classical post-processing outcomes.
     sifted: bool = False
     error: bool | None = None
-    intensity_class: str | None = None
+
+    # Extension fields for multi-party, phase-encoded, and BSM-based protocols.
     party: str | None = None
     phase_slice: int | None = None
     bsm_success: bool | None = None
-    detection_pattern: str | None = None
+
+    # Explicit adversarial action, kept separate from accidental noise.
     eve_action: str | None = None
+    eve_basis: str | None = None
     eve_detectable: bool = False
     tags: JSONObject = field(default_factory=dict)
 
@@ -137,6 +150,11 @@ class Event:
         )
         object.__setattr__(
             self,
+            "eve_basis",
+            _validate_optional_str("eve_basis", self.eve_basis),
+        )
+        object.__setattr__(
+            self,
             "eve_detectable",
             require_bool("eve_detectable", self.eve_detectable),
         )
@@ -151,18 +169,19 @@ class Event:
             "bob_basis": self.bob_basis,
             "emitted": self.emitted,
             "photon_number": self.photon_number,
+            "intensity_class": self.intensity_class,
             "transmitted": self.transmitted,
             "detected": self.detected,
             "detection_origin": self.detection_origin,
             "bob_bit": self.bob_bit,
+            "detection_pattern": self.detection_pattern,
             "sifted": self.sifted,
             "error": self.error,
-            "intensity_class": self.intensity_class,
             "party": self.party,
             "phase_slice": self.phase_slice,
             "bsm_success": self.bsm_success,
-            "detection_pattern": self.detection_pattern,
             "eve_action": self.eve_action,
+            "eve_basis": self.eve_basis,
             "eve_detectable": self.eve_detectable,
             "tags": self.tags,
         }
@@ -192,6 +211,7 @@ class Event:
                 "bsm_success",
                 "detection_pattern",
                 "eve_action",
+                "eve_basis",
                 "eve_detectable",
                 "tags",
             },
@@ -204,18 +224,19 @@ class Event:
             bob_basis=data.get("bob_basis"),
             emitted=data.get("emitted", False),
             photon_number=data.get("photon_number", 0),
+            intensity_class=data.get("intensity_class"),
             transmitted=data.get("transmitted", False),
             detected=data.get("detected", False),
             detection_origin=data.get("detection_origin", "none"),
             bob_bit=data.get("bob_bit"),
+            detection_pattern=data.get("detection_pattern"),
             sifted=data.get("sifted", False),
             error=data.get("error"),
-            intensity_class=data.get("intensity_class"),
             party=data.get("party"),
             phase_slice=data.get("phase_slice"),
             bsm_success=data.get("bsm_success"),
-            detection_pattern=data.get("detection_pattern"),
             eve_action=data.get("eve_action"),
+            eve_basis=data.get("eve_basis"),
             eve_detectable=data.get("eve_detectable", False),
             tags=data.get("tags", {}),
         )

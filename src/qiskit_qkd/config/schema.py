@@ -74,7 +74,10 @@ class SourceConfig:
             object.__setattr__(
                 self,
                 "mean_photon_number",
-                require_positive_number("mean_photon_number", self.mean_photon_number),
+                require_non_negative_number(
+                    "mean_photon_number",
+                    self.mean_photon_number,
+                ),
             )
         object.__setattr__(
             self,

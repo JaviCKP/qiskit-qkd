@@ -39,6 +39,7 @@ class SimulationResult:
     scenario: Scenario
     metrics: Metrics
     provenance: JSONObject = field(default_factory=dict)
+    qiskit: JSONObject = field(default_factory=dict)
     library_version: str = __version__
     event_sample: tuple[Event, ...] = field(default_factory=tuple)
     aggregated: bool = True
@@ -51,6 +52,11 @@ class SimulationResult:
             normalize_json_object(self.provenance, path="provenance"),
         )
         object.__setattr__(self, "provenance", merged_provenance)
+        object.__setattr__(
+            self,
+            "qiskit",
+            normalize_json_object(self.qiskit, path="qiskit"),
+        )
         object.__setattr__(self, "library_version", str(self.library_version))
         object.__setattr__(self, "event_sample", tuple(self.event_sample))
         object.__setattr__(
@@ -71,6 +77,7 @@ class SimulationResult:
             "scenario": self.scenario.to_dict(),
             "metrics": self.metrics.to_dict(),
             "provenance": self.provenance,
+            "qiskit": self.qiskit,
             "event_sample": [event.to_dict() for event in self.event_sample],
             "aggregated": self.aggregated,
         }
@@ -86,6 +93,7 @@ class SimulationResult:
                 "scenario",
                 "metrics",
                 "provenance",
+                "qiskit",
                 "event_sample",
                 "aggregated",
             },
@@ -97,6 +105,7 @@ class SimulationResult:
             scenario=Scenario.from_dict(data["scenario"]),
             metrics=Metrics.from_dict(data["metrics"]),
             provenance=data.get("provenance", {}),
+            qiskit=data.get("qiskit", {}),
             library_version=data.get("library_version", __version__),
             event_sample=tuple(
                 Event.from_dict(event_data)
