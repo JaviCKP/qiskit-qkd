@@ -12,12 +12,23 @@ from qiskit_qkd._validation import (
     reject_unknown_fields,
     require_bool,
     require_choice,
+    require_finite_number,
     require_non_empty_str,
     require_non_negative_int,
     require_non_negative_number,
 )
 
-DETECTION_ORIGINS = {"signal", "dark", "background", "none"}
+DETECTION_ORIGINS = {"signal", "dark", "background", "afterpulse", "none"}
+TIMING_STATUSES = {
+    "not_evaluated",
+    "no_signal",
+    "in_gate",
+    "early",
+    "late",
+    "assigned_nearest",
+    "ambiguous",
+    "dead_time",
+}
 
 
 def _validate_bit(name: str, value: int | None) -> int | None:
@@ -34,12 +45,35 @@ def _validate_optional_str(name: str, value: str | None) -> str | None:
     return require_non_empty_str(name, value)
 
 
+def _validate_optional_slot(name: str, value: int | None) -> int | None:
+    if value is None:
+        return None
+    return require_non_negative_int(name, value)
+
+
+def _validate_optional_time(name: str, value: float | None) -> float | None:
+    if value is None:
+        return None
+    return require_finite_number(name, value)
+
+
 @dataclass(frozen=True, slots=True)
 class Event:
     """Sampled event with enough fields to trace one protocol round."""
 
     index: int
     time_s: float
+    time_slot: int | None = None
+
+    # Timing metadata. `index` is retained for compatibility; `time_slot` names
+    # the shared Alice/Bob clock window represented by this event.
+    emission_time_s: float | None = None
+    expected_arrival_time_s: float | None = None
+    arrival_time_s: float | None = None
+    bob_gate_start_s: float | None = None
+    bob_gate_end_s: float | None = None
+    assigned_slot: int | None = None
+    timing_status: str = "not_evaluated"
 
     # Preparation choices for prepare-and-measure protocols such as BB84.
     alice_bit: int | None = None
@@ -79,6 +113,59 @@ class Event:
             self,
             "time_s",
             require_non_negative_number("time_s", self.time_s),
+        )
+        time_slot = self.index if self.time_slot is None else self.time_slot
+        object.__setattr__(
+            self,
+            "time_slot",
+            require_non_negative_int("time_slot", time_slot),
+        )
+        emission_time_s = (
+            self.time_s if self.emission_time_s is None else self.emission_time_s
+        )
+        object.__setattr__(
+            self,
+            "emission_time_s",
+            _validate_optional_time("emission_time_s", emission_time_s),
+        )
+        object.__setattr__(
+            self,
+            "expected_arrival_time_s",
+            _validate_optional_time(
+                "expected_arrival_time_s",
+                self.expected_arrival_time_s,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "arrival_time_s",
+            _validate_optional_time("arrival_time_s", self.arrival_time_s),
+        )
+        object.__setattr__(
+            self,
+            "bob_gate_start_s",
+            _validate_optional_time("bob_gate_start_s", self.bob_gate_start_s),
+        )
+        object.__setattr__(
+            self,
+            "bob_gate_end_s",
+            _validate_optional_time("bob_gate_end_s", self.bob_gate_end_s),
+        )
+        if (
+            self.bob_gate_start_s is not None
+            and self.bob_gate_end_s is not None
+            and self.bob_gate_end_s < self.bob_gate_start_s
+        ):
+            raise ValueError("bob_gate_end_s must be greater than bob_gate_start_s")
+        object.__setattr__(
+            self,
+            "assigned_slot",
+            _validate_optional_slot("assigned_slot", self.assigned_slot),
+        )
+        object.__setattr__(
+            self,
+            "timing_status",
+            require_choice("timing_status", self.timing_status, TIMING_STATUSES),
         )
         object.__setattr__(
             self,
@@ -163,7 +250,15 @@ class Event:
     def to_dict(self) -> JSONObject:
         return {
             "index": self.index,
+            "time_slot": self.time_slot,
             "time_s": self.time_s,
+            "emission_time_s": self.emission_time_s,
+            "expected_arrival_time_s": self.expected_arrival_time_s,
+            "arrival_time_s": self.arrival_time_s,
+            "bob_gate_start_s": self.bob_gate_start_s,
+            "bob_gate_end_s": self.bob_gate_end_s,
+            "assigned_slot": self.assigned_slot,
+            "timing_status": self.timing_status,
             "alice_bit": self.alice_bit,
             "alice_basis": self.alice_basis,
             "bob_basis": self.bob_basis,
@@ -193,7 +288,15 @@ class Event:
             data,
             {
                 "index",
+                "time_slot",
                 "time_s",
+                "emission_time_s",
+                "expected_arrival_time_s",
+                "arrival_time_s",
+                "bob_gate_start_s",
+                "bob_gate_end_s",
+                "assigned_slot",
+                "timing_status",
                 "alice_bit",
                 "alice_basis",
                 "bob_basis",
@@ -219,6 +322,14 @@ class Event:
         return cls(
             index=data["index"],
             time_s=data["time_s"],
+            time_slot=data.get("time_slot"),
+            emission_time_s=data.get("emission_time_s"),
+            expected_arrival_time_s=data.get("expected_arrival_time_s"),
+            arrival_time_s=data.get("arrival_time_s"),
+            bob_gate_start_s=data.get("bob_gate_start_s"),
+            bob_gate_end_s=data.get("bob_gate_end_s"),
+            assigned_slot=data.get("assigned_slot"),
+            timing_status=data.get("timing_status", "not_evaluated"),
             alice_bit=data.get("alice_bit"),
             alice_basis=data.get("alice_basis"),
             bob_basis=data.get("bob_basis"),

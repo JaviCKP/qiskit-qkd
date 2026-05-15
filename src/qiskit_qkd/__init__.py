@@ -10,6 +10,7 @@ from .config import (
     ProtocolConfig,
     Scenario,
     SourceConfig,
+    TimingConfig,
 )
 from .reproducibility import make_rng
 from .results import Event, Metrics, SimulationResult
@@ -32,6 +33,7 @@ __all__ = [
     "Scenario",
     "SimulationResult",
     "SourceConfig",
+    "TimingConfig",
     "__version__",
     "make_rng",
 ]

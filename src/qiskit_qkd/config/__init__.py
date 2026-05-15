@@ -7,6 +7,7 @@ from .schema import (
     ProtocolConfig,
     Scenario,
     SourceConfig,
+    TimingConfig,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ProtocolConfig",
     "Scenario",
     "SourceConfig",
+    "TimingConfig",
 ]

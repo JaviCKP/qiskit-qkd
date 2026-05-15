@@ -33,6 +33,9 @@ class Metrics:
     sifted_key_rate_bps: float = 0.0
     secret_key_rate_bps: float = 0.0
     abort: bool = False
+    timing_discards: int = 0
+    dead_time_discards: int = 0
+    afterpulse_clicks: int = 0
     eve_intercepted_fraction: float = 0.0
     eve_information_estimate: float = 0.0
     chsh_s: float | None = None
@@ -43,7 +46,16 @@ class Metrics:
             "pulses",
             require_non_negative_int("pulses", self.pulses),
         )
-        for name in ("emitted", "transmitted", "detected", "sifted", "errors"):
+        for name in (
+            "emitted",
+            "transmitted",
+            "detected",
+            "sifted",
+            "errors",
+            "timing_discards",
+            "dead_time_discards",
+            "afterpulse_clicks",
+        ):
             value = require_non_negative_int(name, getattr(self, name))
             if value > self.pulses:
                 raise ValueError(f"{name} must not exceed pulses")
@@ -107,6 +119,9 @@ class Metrics:
             "sifted_key_rate_bps": self.sifted_key_rate_bps,
             "secret_key_rate_bps": self.secret_key_rate_bps,
             "abort": self.abort,
+            "timing_discards": self.timing_discards,
+            "dead_time_discards": self.dead_time_discards,
+            "afterpulse_clicks": self.afterpulse_clicks,
             "eve_intercepted_fraction": self.eve_intercepted_fraction,
             "eve_information_estimate": self.eve_information_estimate,
             "chsh_s": self.chsh_s,
@@ -131,6 +146,9 @@ class Metrics:
                 "sifted_key_rate_bps",
                 "secret_key_rate_bps",
                 "abort",
+                "timing_discards",
+                "dead_time_discards",
+                "afterpulse_clicks",
                 "eve_intercepted_fraction",
                 "eve_information_estimate",
                 "chsh_s",
@@ -150,6 +168,9 @@ class Metrics:
             sifted_key_rate_bps=data.get("sifted_key_rate_bps", 0.0),
             secret_key_rate_bps=data.get("secret_key_rate_bps", 0.0),
             abort=data.get("abort", False),
+            timing_discards=data.get("timing_discards", 0),
+            dead_time_discards=data.get("dead_time_discards", 0),
+            afterpulse_clicks=data.get("afterpulse_clicks", 0),
             eve_intercepted_fraction=data.get("eve_intercepted_fraction", 0.0),
             eve_information_estimate=data.get("eve_information_estimate", 0.0),
             chsh_s=data.get("chsh_s"),

@@ -111,7 +111,15 @@ def test_event_serialization_order_follows_round_lifecycle() -> None:
 
     assert list(event.to_dict()) == [
         "index",
+        "time_slot",
         "time_s",
+        "emission_time_s",
+        "expected_arrival_time_s",
+        "arrival_time_s",
+        "bob_gate_start_s",
+        "bob_gate_end_s",
+        "assigned_slot",
+        "timing_status",
         "alice_bit",
         "alice_basis",
         "bob_basis",

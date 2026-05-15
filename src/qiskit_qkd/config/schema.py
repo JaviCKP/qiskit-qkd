@@ -13,6 +13,8 @@ from qiskit_qkd._validation import (
     normalize_string_tuple,
     reject_unknown_fields,
     require_bool,
+    require_choice,
+    require_finite_number,
     require_minimum_number,
     require_non_empty_str,
     require_non_negative_int,
@@ -25,6 +27,7 @@ from qiskit_qkd._validation import (
 from qiskit_qkd.reproducibility import sample_unit_interval
 
 SCHEMA_VERSION = 1
+SLOT_ASSIGNMENT_POLICIES = {"discard", "nearest"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +212,8 @@ class DetectorConfig:
     efficiency: float = 1.0
     dark_count_rate_hz: float = 0.0
     gate_width_s: float = 1e-9
+    dead_time_s: float = 0.0
+    afterpulse_probability: float = 0.0
     readout_error_probability: float = 0.0
     double_click_policy: str = "discard"
 
@@ -234,6 +239,19 @@ class DetectorConfig:
         )
         object.__setattr__(
             self,
+            "dead_time_s",
+            require_non_negative_number("dead_time_s", self.dead_time_s),
+        )
+        object.__setattr__(
+            self,
+            "afterpulse_probability",
+            require_probability(
+                "afterpulse_probability",
+                self.afterpulse_probability,
+            ),
+        )
+        object.__setattr__(
+            self,
             "readout_error_probability",
             require_probability(
                 "readout_error_probability",
@@ -254,6 +272,8 @@ class DetectorConfig:
             "efficiency": self.efficiency,
             "dark_count_rate_hz": self.dark_count_rate_hz,
             "gate_width_s": self.gate_width_s,
+            "dead_time_s": self.dead_time_s,
+            "afterpulse_probability": self.afterpulse_probability,
             "readout_error_probability": self.readout_error_probability,
             "double_click_policy": self.double_click_policy,
         }
@@ -268,6 +288,8 @@ class DetectorConfig:
                 "efficiency",
                 "dark_count_rate_hz",
                 "gate_width_s",
+                "dead_time_s",
+                "afterpulse_probability",
                 "readout_error_probability",
                 "double_click_policy",
             },
@@ -277,8 +299,84 @@ class DetectorConfig:
             efficiency=data.get("efficiency", 1.0),
             dark_count_rate_hz=data.get("dark_count_rate_hz", 0.0),
             gate_width_s=data.get("gate_width_s", 1e-9),
+            dead_time_s=data.get("dead_time_s", 0.0),
+            afterpulse_probability=data.get("afterpulse_probability", 0.0),
             readout_error_probability=data.get("readout_error_probability", 0.0),
             double_click_policy=data.get("double_click_policy", "discard"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TimingConfig:
+    """Clock synchronization and gate-assignment parameters."""
+
+    propagation_delay_s: float = 0.0
+    jitter_std_s: float = 0.0
+    clock_offset_s: float = 0.0
+    clock_drift_ppm: float = 0.0
+    slot_assignment_policy: str = "discard"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "propagation_delay_s",
+            require_non_negative_number(
+                "propagation_delay_s",
+                self.propagation_delay_s,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "jitter_std_s",
+            require_non_negative_number("jitter_std_s", self.jitter_std_s),
+        )
+        object.__setattr__(
+            self,
+            "clock_offset_s",
+            require_finite_number("clock_offset_s", self.clock_offset_s),
+        )
+        drift = require_finite_number("clock_drift_ppm", self.clock_drift_ppm)
+        if drift <= -1_000_000.0:
+            raise ValueError("clock_drift_ppm must keep Bob's slot period positive")
+        object.__setattr__(self, "clock_drift_ppm", drift)
+        object.__setattr__(
+            self,
+            "slot_assignment_policy",
+            require_choice(
+                "slot_assignment_policy",
+                self.slot_assignment_policy,
+                SLOT_ASSIGNMENT_POLICIES,
+            ),
+        )
+
+    def to_dict(self) -> JSONObject:
+        return {
+            "propagation_delay_s": self.propagation_delay_s,
+            "jitter_std_s": self.jitter_std_s,
+            "clock_offset_s": self.clock_offset_s,
+            "clock_drift_ppm": self.clock_drift_ppm,
+            "slot_assignment_policy": self.slot_assignment_policy,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        reject_unknown_fields(
+            "TimingConfig",
+            data,
+            {
+                "propagation_delay_s",
+                "jitter_std_s",
+                "clock_offset_s",
+                "clock_drift_ppm",
+                "slot_assignment_policy",
+            },
+        )
+        return cls(
+            propagation_delay_s=data.get("propagation_delay_s", 0.0),
+            jitter_std_s=data.get("jitter_std_s", 0.0),
+            clock_offset_s=data.get("clock_offset_s", 0.0),
+            clock_drift_ppm=data.get("clock_drift_ppm", 0.0),
+            slot_assignment_policy=data.get("slot_assignment_policy", "discard"),
         )
 
 
@@ -365,6 +463,7 @@ class Scenario:
     source: SourceConfig = field(default_factory=SourceConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     detector: DetectorConfig = field(default_factory=DetectorConfig)
+    timing: TimingConfig = field(default_factory=TimingConfig)
     post_processing: PostProcessingConfig = field(default_factory=PostProcessingConfig)
     event_sample_size: int = 0
     store_full_event_log: bool = False
@@ -408,6 +507,7 @@ class Scenario:
             "source": self.source.to_dict(),
             "channel": self.channel.to_dict(),
             "detector": self.detector.to_dict(),
+            "timing": self.timing.to_dict(),
             "post_processing": self.post_processing.to_dict(),
             "event_sample_size": self.event_sample_size,
             "store_full_event_log": self.store_full_event_log,
@@ -425,6 +525,7 @@ class Scenario:
             "source",
             "channel",
             "detector",
+            "timing",
             "post_processing",
             "event_sample_size",
             "store_full_event_log",
@@ -442,6 +543,7 @@ class Scenario:
             source=SourceConfig.from_dict(data.get("source", {})),
             channel=ChannelConfig.from_dict(data.get("channel", {})),
             detector=DetectorConfig.from_dict(data.get("detector", {})),
+            timing=TimingConfig.from_dict(data.get("timing", {})),
             post_processing=PostProcessingConfig.from_dict(
                 data.get("post_processing", {}),
             ),
