@@ -34,7 +34,8 @@ Keep QKD-specific classical and photonic behavior outside Qiskit:
 - Detector efficiency, dark counts, and double clicks.
 - Timing gates, jitter, clock offset/drift, dead time, and afterpulsing.
 - Eve models and attack annotations.
-- Sifting, QBER estimation, abort decisions, and key-rate formulas.
+- Sifting, QBER sampling, reconciliation diagnostics, privacy-amplification
+  digests, abort decisions, and key-rate formulas.
 - `Event`, `Metrics`, and `SimulationResult` serialization.
 
 Phase 3 owns fiber attenuation and detector dark counts in this event layer.
@@ -67,11 +68,9 @@ This keeps the model honest. Qiskit still measures the quantum state when a
 signal is available, while the QKD event layer decides whether that measured
 signal is visible to Bob in the expected detection window.
 
-## Future Phase 3.6: Classical Reconciliation
+## Phase 3.6: Classical Reconciliation
 
-Phase 3 computes a simplified secret-key rate from QBER, but it does not yet
-construct corrected Alice/Bob keys. Phase 3.6 should add an explicit classical
-post-processing layer after sifting:
+Phase 3.6 adds an explicit classical post-processing layer after sifting:
 
 1. Alice and Bob derive candidate sifted strings from the same detected
    same-basis slots.
@@ -81,8 +80,8 @@ post-processing layer after sifting:
 4. If QBER is acceptable, a pedagogical reconciliation protocol reveals parity
    or syndrome information and corrects Bob's candidate key.
 5. The simulator accounts for the public leakage as `leak_ec`.
-6. Privacy amplification compresses the corrected key to remove information
-   revealed during error correction and estimated from QBER.
+6. Optional privacy amplification reports a digest and output length for the
+   corrected key material.
 
 This phase is classical and should not call Qiskit. It should also distinguish
 between what Alice and Bob can know through public messages and what the
@@ -104,9 +103,11 @@ counts.
    double-click policy, dead time, and afterpulsing.
 6. The protocol records an `Event` for each attempted pulse.
 7. `sift_bb84_event()` marks detected matching-basis events as sifted.
-8. `Metrics` aggregates counters, QBER, loss, gain, rates, and abort status.
-9. `SimulationResult` returns metrics, provenance, Qiskit execution metadata,
-   and the configured event sample.
+8. `run_bb84_classical_postprocessing()` estimates QBER, reconciles the
+   candidate strings pedagogically, and records leakage/final-key diagnostics.
+9. `Metrics` aggregates counters, QBER, loss, gain, rates, and abort status.
+10. `SimulationResult` returns metrics, classical diagnostics, provenance,
+    Qiskit execution metadata, and the configured event sample.
 
 This boundary keeps the demo honest: Qiskit performs the quantum measurement,
 while the QKD library performs photonic event sampling, detector bookkeeping,

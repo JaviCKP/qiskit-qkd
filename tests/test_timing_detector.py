@@ -212,6 +212,29 @@ def test_dead_time_reduces_detections_for_close_clicks() -> None:
     ]
 
 
+def test_dead_time_allows_click_exactly_when_detector_becomes_available() -> None:
+    detector = DetectorConfig(
+        kind="threshold",
+        efficiency=1.0,
+        dark_count_rate_hz=0.0,
+        gate_width_s=1e-6,
+        dead_time_s=1e-6,
+    )
+
+    result = BB84Protocol().run(
+        scenario(
+            pulses=32,
+            seed=133,
+            clock_rate_hz=1_000_000.0,
+            detector=detector,
+        ),
+        backend=CountingBackend(),
+    )
+
+    assert result.metrics.detected == 32
+    assert result.metrics.dead_time_discards == 0
+
+
 def test_afterpulse_probability_adds_false_clicks_after_real_detection(
     monkeypatch,
 ) -> None:

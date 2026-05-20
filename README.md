@@ -6,10 +6,9 @@ path backed by real Qiskit circuits and Sampler primitives, and the Phase 3
 event layer for fiber loss, detector efficiency, dark counts, and distance
 sweeps. Phase 3.5 adds explicit timing metadata, Bob detection gates, clock
 offset/drift, jitter, dead time, and afterpulsing in the event layer.
-
-Phase 3.6 is documented as the next classical post-processing refinement:
-pedagogical error reconciliation, error-correction leakage accounting, and
-privacy amplification. It remains future work.
+Phase 3.6 adds a pedagogical classical post-processing layer with reproducible
+QBER sampling, block-parity reconciliation diagnostics, error-correction
+leakage accounting, and optional privacy-amplification digests.
 
 ## Installation
 
@@ -62,6 +61,5 @@ reference. See [docs/domain_model.md](docs/domain_model.md) for the data model,
 [docs/architecture.md](docs/architecture.md) for the Qiskit/QKD boundary, and
 [docs/parameters.md](docs/parameters.md) for units and formulas.
 
-Phase 3.6 reconciliation/privacy amplification, Eve, decoy BB84, E91,
-dashboards, CLI commands, Aer noise adapters, and advanced transpilation remain
-future phases.
+Eve, decoy BB84, E91, dashboards, CLI commands, Aer noise adapters, and
+advanced transpilation remain future phases.

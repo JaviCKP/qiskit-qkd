@@ -92,3 +92,15 @@ def test_bb84_uses_batched_backend_without_full_event_log() -> None:
     assert result.metrics.detected == scenario.pulses
     assert result.metrics.qber == 0.0
     assert len(result.event_sample) == 3
+
+
+def test_bb84_returns_classical_postprocessing_summary_without_full_event_log() -> None:
+    scenario = build_scenario(pulses=64, seed=31, event_sample_size=0)
+
+    result = BB84Protocol().run(scenario, backend=BatchOnlyBackend())
+
+    assert result.event_sample == ()
+    assert result.classical["sifted_key_length"] == result.metrics.sifted
+    assert result.classical["candidate_key_length"] == result.metrics.sifted
+    assert result.classical["estimated_qber"] == result.metrics.qber
+    assert result.classical["leak_ec"] > 0

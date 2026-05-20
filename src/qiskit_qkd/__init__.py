@@ -14,6 +14,7 @@ from .config import (
 )
 from .reproducibility import make_rng
 from .results import Event, Metrics, SimulationResult
+from .sources import EmissionEvent, IdealSinglePhotonSource, source_from_config
 
 if TYPE_CHECKING:
     from .backends import QiskitSamplerBackend
@@ -25,7 +26,9 @@ __all__ = [
     "ChannelConfig",
     "CircuitFactory",
     "DetectorConfig",
+    "EmissionEvent",
     "Event",
+    "IdealSinglePhotonSource",
     "Metrics",
     "PostProcessingConfig",
     "ProtocolConfig",
@@ -36,6 +39,7 @@ __all__ = [
     "TimingConfig",
     "__version__",
     "make_rng",
+    "source_from_config",
 ]
 
 

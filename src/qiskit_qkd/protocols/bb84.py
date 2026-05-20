@@ -6,13 +6,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from qiskit_qkd.backends import QiskitSamplerBackend
+from qiskit_qkd.channel_core import prepare_physical_round
 from qiskit_qkd.channels import channel_from_config
 from qiskit_qkd.config import Scenario
 from qiskit_qkd.detectors import detector_from_config
-from qiskit_qkd.postprocessing import bb84_secret_fraction, qber, sift_bb84_event
+from qiskit_qkd.postprocessing import (
+    bb84_secret_fraction,
+    qber,
+    run_bb84_classical_postprocessing,
+    sift_bb84_event,
+)
 from qiskit_qkd.reproducibility import make_rng
 from qiskit_qkd.results import Event, Metrics, SimulationResult
-from qiskit_qkd.timing import assign_timing
+from qiskit_qkd.sources import source_from_config
 
 MeasureRound = tuple[int, str, str]
 
@@ -34,6 +40,7 @@ class PreparedRound:
     bob_basis: str
     emitted: bool
     photon_number: int
+    intensity_class: str | None
     transmitted: bool
 
 
@@ -52,11 +59,14 @@ class BB84Protocol:
 
         backend = backend or QiskitSamplerBackend(seed=scenario.seed)
         rng = make_rng(scenario.seed)
+        source = source_from_config(scenario.source)
         channel = channel_from_config(scenario.channel)
         detector = detector_from_config(scenario.detector)
         bases = tuple(scenario.protocol.basis_choices)
         batch_limit = getattr(backend, "max_circuits_per_job", scenario.pulses)
         event_sample: list[Event] = []
+        alice_sifted_bits: list[int] = []
+        bob_sifted_bits: list[int] = []
         emitted = 0
         transmitted = 0
         detected = 0
@@ -126,6 +136,7 @@ class BB84Protocol:
                         bob_basis=round_.bob_basis,
                         emitted=round_.emitted,
                         photon_number=round_.photon_number,
+                        intensity_class=round_.intensity_class,
                         transmitted=round_.transmitted,
                         detected=detection.detected,
                         detection_origin=detection.detection_origin,
@@ -143,6 +154,13 @@ class BB84Protocol:
                 )
                 dead_time_discards += int(detection.blocked_by_dead_time)
                 afterpulse_clicks += int(detection.afterpulse)
+                if (
+                    event.sifted
+                    and event.alice_bit is not None
+                    and event.bob_bit is not None
+                ):
+                    alice_sifted_bits.append(event.alice_bit)
+                    bob_sifted_bits.append(event.bob_bit)
                 if scenario.store_full_event_log or (
                     len(event_sample) < scenario.event_sample_size
                 ):
@@ -150,38 +168,32 @@ class BB84Protocol:
 
         pending: list[PreparedRound] = []
         for index in range(scenario.pulses):
-            emitted_this_round = rng.random() < scenario.source.emission_probability
-            photon_number = int(emitted_this_round)
-            transmitted_this_round = (
-                channel.transmit(rng) if emitted_this_round else False
-            )
-            timing = assign_timing(
-                time_slot=index,
-                pulses=scenario.pulses,
-                clock_rate_hz=scenario.clock_rate_hz,
-                gate_width_s=scenario.detector.gate_width_s,
-                timing=scenario.timing,
-                transmitted=transmitted_this_round,
+            physical = prepare_physical_round(
+                index=index,
+                scenario=scenario,
+                source=source,
+                channel=channel,
                 rng=rng,
             )
             pending.append(
                 PreparedRound(
-                    index=index,
-                    time_s=timing.emission_time_s,
-                    time_slot=timing.time_slot,
-                    emission_time_s=timing.emission_time_s,
-                    expected_arrival_time_s=timing.expected_arrival_time_s,
-                    arrival_time_s=timing.arrival_time_s,
-                    bob_gate_start_s=timing.bob_gate_start_s,
-                    bob_gate_end_s=timing.bob_gate_end_s,
-                    signal_assigned_slot=timing.signal_assigned_slot,
-                    timing_status=timing.timing_status,
+                    index=physical.index,
+                    time_s=physical.time_s,
+                    time_slot=physical.time_slot,
+                    emission_time_s=physical.emission_time_s,
+                    expected_arrival_time_s=physical.expected_arrival_time_s,
+                    arrival_time_s=physical.arrival_time_s,
+                    bob_gate_start_s=physical.bob_gate_start_s,
+                    bob_gate_end_s=physical.bob_gate_end_s,
+                    signal_assigned_slot=physical.signal_assigned_slot,
+                    timing_status=physical.timing_status,
                     alice_bit=rng.randrange(2),
                     alice_basis=rng.choice(bases),
                     bob_basis=rng.choice(bases),
-                    emitted=emitted_this_round,
-                    photon_number=photon_number,
-                    transmitted=transmitted_this_round,
+                    emitted=physical.emitted,
+                    photon_number=physical.photon_number,
+                    intensity_class=physical.intensity_class,
+                    transmitted=physical.transmitted,
                 ),
             )
             if len(pending) == batch_limit:
@@ -204,6 +216,7 @@ class BB84Protocol:
         )
         provenance = backend.provenance()
         provenance["protocol"] = "BB84"
+        provenance["source_model"] = type(source).__name__
         provenance["channel_model"] = type(channel).__name__
         provenance["detector_model"] = type(detector).__name__
         provenance["timing_model"] = "slot-gate"
@@ -212,12 +225,19 @@ class BB84Protocol:
             if hasattr(backend, "qiskit_summary")
             else {}
         )
+        classical = run_bb84_classical_postprocessing(
+            alice_bits=tuple(alice_sifted_bits),
+            bob_bits=tuple(bob_sifted_bits),
+            seed=scenario.seed,
+            config=scenario.post_processing,
+        ).to_dict()
 
         return SimulationResult(
             scenario=scenario,
             metrics=metrics,
             provenance=provenance,
             qiskit=qiskit_summary,
+            classical=classical,
             event_sample=tuple(event_sample),
             aggregated=not scenario.store_full_event_log,
         )
