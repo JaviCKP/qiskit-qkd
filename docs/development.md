@@ -1,9 +1,10 @@
 # Development
 
-This repository is in Phase 3.5. The package has a validated domain model, a
+This repository is in Phase 3.6. The package has a validated domain model, a
 minimal BB84 circuit path backed by Qiskit primitives, and an event-level
 physical layer for fiber loss, detector efficiency, dark counts, timing gates,
-dead time, afterpulsing, and distance sweeps.
+dead time, afterpulsing, and distance sweeps. It also has pedagogical
+classical post-processing diagnostics for BB84.
 
 ## Phase 0 Scope
 
@@ -108,14 +109,14 @@ detector-state phase, not a protocol-expansion phase.
 
 ## Phase 3.6 Scope
 
-Phase 3.6 is a future classical post-processing phase. It is not implemented
-yet. Its purpose is to turn the current pedagogical key-rate estimate into a
-more explicit BB84 post-processing pipeline while still avoiding claims of
-industrial or composable security.
+Phase 3.6 is a classical post-processing phase. Its purpose is to turn the
+current pedagogical key-rate estimate into a more explicit BB84
+post-processing pipeline while still avoiding claims of industrial or
+composable security.
 
-Phase 3 currently computes QBER and a simplified secret-key rate directly from
-aggregate counters. Phase 3.6 should make the intermediate classical steps
-visible:
+Phase 3 still computes QBER and a simplified secret-key rate from aggregate
+counters. Phase 3.6 additionally makes the intermediate classical steps
+visible through `SimulationResult.classical`:
 
 - Build aligned Alice and Bob sifted-key strings from detected same-basis slots.
 - Select a reproducible public sample of sifted bits for QBER estimation.
@@ -128,18 +129,18 @@ visible:
   reconciliation.
 - Report corrected-key length and residual mismatches for validation runs where
   the simulator can compare Alice and Bob internally.
-- Add simple privacy amplification, for example hashing the corrected key down
-  to a target length derived from QBER and `leak_ec`.
+- Add simple privacy amplification by hashing the corrected key diagnostics
+  down to a target length derived from QBER and `leak_ec`.
 - Store only key material needed for tests or small examples; large simulations
   should keep aggregate lengths and diagnostics instead of dumping full secrets.
 
-Phase 3.6 should be explicit about limits. Pedagogical block-parity
-reconciliation is useful for teaching and tests, but it is not Cascade, LDPC,
-finite-key analysis, or a composable security proof. If QBER is near 50%, Alice
-and Bob's sifted strings are effectively uncorrelated and the correct behavior
-is abort, not attempted correction.
+Phase 3.6 is explicit about limits. Pedagogical block-parity reconciliation is
+useful for teaching and tests, but it is not Cascade, LDPC, finite-key
+analysis, or a composable security proof. If QBER is near 50%, Alice and Bob's
+sifted strings are effectively uncorrelated and the correct behavior is abort,
+not attempted correction.
 
-Phase 3.6 should not include Eve, decoy BB84, E91, dashboards, CLI commands, Aer
+Phase 3.6 does not include Eve, decoy BB84, E91, dashboards, CLI commands, Aer
 `NoiseModel` adapters, or advanced transpilation. It is a classical
 post-processing phase layered after sifting and before later protocol
 expansions.

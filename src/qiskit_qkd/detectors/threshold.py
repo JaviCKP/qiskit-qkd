@@ -16,6 +16,7 @@ from qiskit_qkd._validation import (
 )
 
 DOUBLE_CLICK_POLICIES = {"discard", "random", "error"}
+TIME_COMPARISON_TOLERANCE_S = 1e-15
 
 
 def _validate_optional_bit(name: str, value: int | None) -> int | None:
@@ -119,7 +120,10 @@ class ThresholdDetector:
             "time_s",
             time_s,
         )
-        if self.dead_time_s > 0.0 and detection_time_s < self._available_at_s:
+        if (
+            self.dead_time_s > 0.0
+            and detection_time_s < self._available_at_s - TIME_COMPARISON_TOLERANCE_S
+        ):
             return DetectionResult(
                 detected=False,
                 bob_bit=None,

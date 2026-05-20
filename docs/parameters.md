@@ -3,6 +3,7 @@
 Configuration fields include units in their names when units matter. Phase 3
 uses the source, channel, and detector fields in BB84 execution through the
 event layer. Phase 3.5 adds explicit timing fields in the same event layer.
+Phase 3.6 adds explicit classical post-processing diagnostics.
 
 ## Scenario
 
@@ -153,30 +154,18 @@ fill a loss.
 
 - `qber_abort_threshold`: abort when QBER is greater than this value. Set to
   `None` to disable the abort threshold.
-- `error_correction_efficiency`: `f_ec` in the simplified asymptotic BB84
-  secret-fraction formula. Must be at least `1.0`.
-- `sifting_enabled`: retained for validated configuration; Phase 3 BB84 always
-  applies basis sifting.
-- `privacy_amplification_enabled`: retained for future explicit privacy
-  amplification steps.
-
-Future Phase 3.6 post-processing parameters should make the simplified
-key-rate estimate more concrete:
-
 - `qber_sample_fraction`: fraction of sifted bits revealed publicly for QBER
   estimation.
-- `qber_sample_seed`: optional seed offset or domain separator for selecting
-  the revealed sample reproducibly.
-- `reconciliation_method`: for example `block_parity` for a pedagogical
-  parity-search protocol.
-- `reconciliation_block_size`: block size used when comparing parities.
-- `reconciliation_passes`: number of parity passes or permutations.
-- `leak_ec`: measured or estimated public information revealed during error
-  correction.
-- `privacy_hash`: hash family used for pedagogical privacy amplification.
-- `final_key_length`: target output length after privacy amplification.
+- `error_correction_efficiency`: `f_ec` in the simplified asymptotic BB84
+  secret-fraction formula. Must be at least `1.0`.
+- `reconciliation_block_size`: block size for the pedagogical block-parity
+  reconciliation pass.
+- `sifting_enabled`: retained for validated configuration; Phase 3 BB84 always
+  applies basis sifting.
+- `privacy_amplification_enabled`: when true, report a reproducible digest and
+  final length for the corrected key material.
 
-The expected Phase 3.6 flow is:
+The Phase 3.6 flow is:
 
 ```text
 sifted_alice_bits, sifted_bob_bits
@@ -190,6 +179,8 @@ sifted_alice_bits, sifted_bob_bits
 Error correction is meaningful only when Alice and Bob's sifted strings are
 already correlated. If dark counts dominate and QBER approaches `0.5`, the run
 should abort instead of attempting to force a shared key from random strings.
+The block-parity reconciliation is pedagogical. It is not Cascade, LDPC,
+finite-key analysis, or a composable security proof.
 
 QBER:
 

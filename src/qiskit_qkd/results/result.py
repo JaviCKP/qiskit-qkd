@@ -40,6 +40,7 @@ class SimulationResult:
     metrics: Metrics
     provenance: JSONObject = field(default_factory=dict)
     qiskit: JSONObject = field(default_factory=dict)
+    classical: JSONObject = field(default_factory=dict)
     library_version: str = __version__
     event_sample: tuple[Event, ...] = field(default_factory=tuple)
     aggregated: bool = True
@@ -56,6 +57,11 @@ class SimulationResult:
             self,
             "qiskit",
             normalize_json_object(self.qiskit, path="qiskit"),
+        )
+        object.__setattr__(
+            self,
+            "classical",
+            normalize_json_object(self.classical, path="classical"),
         )
         object.__setattr__(self, "library_version", str(self.library_version))
         object.__setattr__(self, "event_sample", tuple(self.event_sample))
@@ -78,6 +84,7 @@ class SimulationResult:
             "metrics": self.metrics.to_dict(),
             "provenance": self.provenance,
             "qiskit": self.qiskit,
+            "classical": self.classical,
             "event_sample": [event.to_dict() for event in self.event_sample],
             "aggregated": self.aggregated,
         }
@@ -94,6 +101,7 @@ class SimulationResult:
                 "metrics",
                 "provenance",
                 "qiskit",
+                "classical",
                 "event_sample",
                 "aggregated",
             },
@@ -106,6 +114,7 @@ class SimulationResult:
             metrics=Metrics.from_dict(data["metrics"]),
             provenance=data.get("provenance", {}),
             qiskit=data.get("qiskit", {}),
+            classical=data.get("classical", {}),
             library_version=data.get("library_version", __version__),
             event_sample=tuple(
                 Event.from_dict(event_data)
@@ -127,6 +136,7 @@ class SimulationResult:
             "seed": self.scenario.seed,
             "scenario_digest": self.scenario.digest(),
             "metrics": self.metrics.to_dict(),
+            "classical": self.classical,
             "event_sample_size": len(self.event_sample),
             "aggregated": self.aggregated,
         }

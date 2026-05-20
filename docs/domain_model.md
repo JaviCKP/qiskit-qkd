@@ -5,8 +5,9 @@ The model uses dataclasses with explicit validation and JSON serialization.
 Phase 3 adds BB84 execution with fiber channel loss, detector efficiency, dark
 counts, and double-click handling on top of these objects. Phase 3.5 adds
 explicit timing synchronization, detector dead time, and afterpulsing.
-Explicit reconciliation/privacy amplification, Eve, E91, and decoy-state
-behavior remain future work.
+Phase 3.6 adds explicit pedagogical reconciliation and optional privacy
+amplification diagnostics. Eve, E91, and decoy-state behavior remain future
+work.
 
 ## Scenario
 
@@ -38,7 +39,8 @@ The initial config objects are intentionally small:
 - `TimingConfig`: propagation delay, jitter, Bob clock offset/drift, and slot
   assignment policy.
 - `PostProcessingConfig`: sifting flag, QBER abort threshold, error correction
-  efficiency, and privacy amplification flag.
+  efficiency, QBER sample fraction, reconciliation block size, and privacy
+  amplification flag.
 
 Values are checked at construction time. Probabilities must be in `[0, 1]`,
 rates and distances must be non-negative, and time windows must be positive.
@@ -62,16 +64,17 @@ received-photon counter. Timing fields include `emission_time_s`,
 - QBER, loss, gain, raw detection rate, sifted key rate, and secret key rate.
 - abort flag, Eve summary fields, and optional CHSH value.
 
-Future Phase 3.6 should add post-processing diagnostics such as QBER sample
-size, revealed sample count, `leak_ec`, corrected-key length, residual mismatch
-count, privacy-amplified length, and final-key digest for reproducible small
-examples.
+`SimulationResult.classical` stores post-processing diagnostics such as QBER
+sample size, revealed sample count, `leak_ec`, corrected-key length, residual
+mismatch count, privacy-amplified length, and final-key digest for reproducible
+small examples.
 
-`SimulationResult` stores the scenario, metrics, provenance, Qiskit execution
-summary, library version, and an optional event sample. Provenance includes the
-seed, scenario digest, library version, and RNG family. The Qiskit summary is
-JSON-safe and stores counts, circuit metadata samples, primitive name, and
-execution sizing rather than raw `QuantumCircuit` objects.
+`SimulationResult` stores the scenario, metrics, classical diagnostics,
+provenance, Qiskit execution summary, library version, and an optional event
+sample. Provenance includes the seed, scenario digest, library version, and RNG
+family. The Qiskit summary is JSON-safe and stores counts, circuit metadata
+samples, primitive name, and execution sizing rather than raw `QuantumCircuit`
+objects.
 
 ## JSON
 

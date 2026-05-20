@@ -386,7 +386,9 @@ class PostProcessingConfig:
 
     sifting_enabled: bool = True
     qber_abort_threshold: float | None = 0.11
+    qber_sample_fraction: float = 0.0
     error_correction_efficiency: float = 1.0
+    reconciliation_block_size: int = 8
     privacy_amplification_enabled: bool = False
 
     def __post_init__(self) -> None:
@@ -405,11 +407,24 @@ class PostProcessingConfig:
         )
         object.__setattr__(
             self,
+            "qber_sample_fraction",
+            require_probability("qber_sample_fraction", self.qber_sample_fraction),
+        )
+        object.__setattr__(
+            self,
             "error_correction_efficiency",
             require_minimum_number(
                 "error_correction_efficiency",
                 self.error_correction_efficiency,
                 1.0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "reconciliation_block_size",
+            require_positive_int(
+                "reconciliation_block_size",
+                self.reconciliation_block_size,
             ),
         )
         object.__setattr__(
@@ -425,7 +440,9 @@ class PostProcessingConfig:
         return {
             "sifting_enabled": self.sifting_enabled,
             "qber_abort_threshold": self.qber_abort_threshold,
+            "qber_sample_fraction": self.qber_sample_fraction,
             "error_correction_efficiency": self.error_correction_efficiency,
+            "reconciliation_block_size": self.reconciliation_block_size,
             "privacy_amplification_enabled": self.privacy_amplification_enabled,
         }
 
@@ -437,14 +454,18 @@ class PostProcessingConfig:
             {
                 "sifting_enabled",
                 "qber_abort_threshold",
+                "qber_sample_fraction",
                 "error_correction_efficiency",
+                "reconciliation_block_size",
                 "privacy_amplification_enabled",
             },
         )
         return cls(
             sifting_enabled=data.get("sifting_enabled", True),
             qber_abort_threshold=data.get("qber_abort_threshold", 0.11),
+            qber_sample_fraction=data.get("qber_sample_fraction", 0.0),
             error_correction_efficiency=data.get("error_correction_efficiency", 1.0),
+            reconciliation_block_size=data.get("reconciliation_block_size", 8),
             privacy_amplification_enabled=data.get(
                 "privacy_amplification_enabled",
                 False,

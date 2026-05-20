@@ -97,6 +97,7 @@ def test_simulation_result_json_roundtrip_is_stable() -> None:
     result = SimulationResult(
         scenario=build_scenario(event_sample_size=0),
         metrics=build_metrics(),
+        classical={"estimated_qber": 0.0, "leak_ec": 4, "final_key_length": 28},
     )
 
     restored = SimulationResult.from_json(result.to_json())
@@ -104,6 +105,7 @@ def test_simulation_result_json_roundtrip_is_stable() -> None:
     assert restored.to_dict() == result.to_dict()
     assert restored.summary() == result.summary()
     assert restored.to_dict()["event_sample"] == []
+    assert restored.to_dict()["classical"]["leak_ec"] == 4
 
 
 def test_event_serialization_order_follows_round_lifecycle() -> None:
