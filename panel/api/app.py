@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .errors import ApiValidationError, validation_exception_handler
 from .jobs import JobManager
@@ -63,5 +65,22 @@ def create_app(
     app.include_router(dynamics.router)
     app.include_router(experiments.router)
     app.include_router(presets.router)
+    _mount_static_app(app)
 
     return app
+
+
+def _mount_static_app(app: FastAPI) -> None:
+    dist_dir = Path(__file__).resolve().parents[1] / "web" / "dist"
+    if not dist_dir.exists():
+        return
+    assets_dir = dist_dir / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def serve_spa(path: str) -> FileResponse:
+        requested = dist_dir / path
+        if requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(dist_dir / "index.html")

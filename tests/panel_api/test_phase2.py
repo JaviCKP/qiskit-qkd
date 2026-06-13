@@ -98,6 +98,45 @@ def test_sweep_job_returns_rows_and_summary(tmp_path: Path) -> None:
     assert len(payload["result"]["summary"]) == 3
 
 
+def test_sweep_job_resolves_dynamic_schedules_for_static_axis(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    scenario = _scenario_payload(
+        dynamic={
+            "parameter_schedules": [
+                {
+                    "target": "channel.distance_km",
+                    "profile": {
+                        "kind": "constant",
+                        "start_s": 0.0,
+                        "end_s": 1.0,
+                        "value": 12.0,
+                    },
+                },
+            ],
+        },
+    )
+
+    created = client.post(
+        "/api/sweeps",
+        json={
+            "scenario": scenario,
+            "axis": {
+                "target": "channel.distance_km",
+                "values": {"start": 0.0, "stop": 10.0, "steps": 2},
+            },
+            "repeats": 1,
+        },
+    )
+
+    assert created.status_code == 200
+    payload = client.get(f"/api/sweeps/{created.json()['job_id']}").json()
+    assert payload["status"] == "done"
+    assert "error" not in payload
+    assert len(payload["result"]["rows"]) == 2
+
+
 def test_characterize_all_link_sections(tmp_path: Path) -> None:
     client = _client(tmp_path)
     scenario = _scenario_payload()

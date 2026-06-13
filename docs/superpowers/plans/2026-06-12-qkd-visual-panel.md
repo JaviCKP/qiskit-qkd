@@ -366,11 +366,11 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 5 — Estudio de Curvas + Caracterización UI
 
-- [ ] Vista Estudio de Curvas completa (X/Y/serie/repeats/escala/umbral),
+- [x] Vista Estudio de Curvas completa (X/Y/serie/repeats/escala/umbral),
       progreso por puntos, bandas mean±std, export SVG/PNG/CSV.
-- [ ] Recetas de curva guardables y re-ejecutables desde la Biblioteca.
-- [ ] Atajos one-click (las 6 curvas canónicas de la sección Vistas).
-- [ ] Vista Caracterización (4 tabs con tarjetas + fórmulas KaTeX + curvas con
+- [x] Recetas de curva guardables y re-ejecutables desde la Biblioteca.
+- [x] Atajos one-click (las 6 curvas canónicas de la sección Vistas).
+- [x] Vista Caracterización (4 tabs con tarjetas + fórmulas KaTeX + curvas con
       selector de eje).
 - **Hecho cuando:** se puede generar y exportar "SKR vs distancia con 3
   eficiencias de detector y 5 repeats" en menos de 5 clicks desde un
@@ -378,12 +378,12 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 6 — Pulido y modo demo
 
-- [ ] `python -m panel.api` sirve el build estático de `panel/web/dist` y abre
+- [x] `python -m panel.api` sirve el build estático de `panel/web/dist` y abre
       el navegador: demo de defensa con un solo comando y sin Node.
-- [ ] Deltas, tooltips de ayuda, estados vacíos cuidados, manejo de errores de
+- [x] Deltas, tooltips de ayuda, estados vacíos cuidados, manejo de errores de
       job visibles, avisos de coste (Aer + pulses altos).
-- [ ] README final con capturas; sección nueva en el README raíz del repo.
-- [ ] Opcional: smoke E2E con Playwright (diseñar → ejecutar → curva).
+- [x] README final con capturas; sección nueva en el README raíz del repo.
+- [x] Opcional: smoke E2E con Playwright (diseñar → ejecutar → curva).
 - **Hecho cuando:** una persona sin contexto arranca la demo con un comando y
   reproduce un experimento guardado con su digest.
 

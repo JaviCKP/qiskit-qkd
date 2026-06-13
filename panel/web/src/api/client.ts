@@ -32,6 +32,7 @@ export type JobStatus = {
   progress: { done: number; total: number }
   elapsed_s: number
   error?: string
+  result?: Record<string, unknown>
   result_summary?: Record<string, unknown>
 }
 
@@ -45,6 +46,13 @@ export type Experiment = {
   updated_at: string
   last_result?: Record<string, unknown> | null
   curve_recipes?: unknown[]
+}
+
+export type AxisRequest = {
+  target: string
+  values:
+    | { start: number; stop: number; steps: number; scale?: 'linear' | 'log' }
+    | Array<number | string | boolean | null>
 }
 
 export type ApiValidationIssue = {
@@ -83,8 +91,13 @@ export async function validateScenario(scenario: ScenarioPayload): Promise<{
 export async function characterize(
   section: 'source' | 'channel' | 'detector' | 'timing',
   scenario: ScenarioPayload,
-): Promise<{ section: string; state: Record<string, unknown> }> {
-  return postJson(`/api/characterize/${section}`, { scenario })
+  axis?: AxisRequest,
+): Promise<{
+  section: string
+  state?: Record<string, unknown>
+  rows?: Array<Record<string, unknown>>
+}> {
+  return postJson(`/api/characterize/${section}`, { scenario, axis })
 }
 
 export async function previewDynamics(
@@ -112,6 +125,23 @@ export async function cancelRun(jobId: string): Promise<{ cancelled: boolean }> 
   return deleteJson(`/api/runs/${jobId}`)
 }
 
+export async function createSweep(body: {
+  scenario: ScenarioPayload
+  axis: AxisRequest
+  series?: AxisRequest | null
+  repeats: number
+}): Promise<{ job_id: string; status: string }> {
+  return postJson('/api/sweeps', body)
+}
+
+export async function fetchSweepStatus(jobId: string): Promise<JobStatus> {
+  return fetchJson(`/api/sweeps/${jobId}`)
+}
+
+export async function cancelSweep(jobId: string): Promise<{ cancelled: boolean }> {
+  return deleteJson(`/api/sweeps/${jobId}`)
+}
+
 export async function listExperiments(): Promise<{ experiments: Experiment[] }> {
   return fetchJson('/api/experiments')
 }
@@ -120,6 +150,7 @@ export async function createExperiment(body: {
   name: string
   scenario: ScenarioPayload
   tags: string[]
+  curve_recipes?: unknown[]
   last_result?: Record<string, unknown> | null
 }): Promise<{ experiment: Experiment }> {
   return postJson('/api/experiments', body)

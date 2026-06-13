@@ -15,5 +15,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #0b0f17;
+  background: #101112;
+  overflow-x: hidden;
+}
+
+html {
+  overflow-x: hidden;
 }

@@ -29,16 +29,20 @@ import createPlotlyComponentModule from 'react-plotly.js/factory'
 
 import {
   ApiError,
+  cancelSweep,
   cancelRun,
   characterize,
   createExperiment,
   createRun,
+  createSweep,
   deleteExperiment,
   exportExperiment,
   fetchRunResult,
   fetchRunStatus,
+  fetchSweepStatus,
   fetchCatalog,
   importExperiment,
+  type AxisRequest,
   type ApiValidationIssue,
   type CatalogField,
   type CatalogSection,
@@ -66,7 +70,7 @@ function resolveDefaultExport<T>(module: T | { default: T }): T {
   return module as T
 }
 
-type ActiveView = 'library' | 'designer' | 'results' | 'curves'
+type ActiveView = 'library' | 'designer' | 'characterize' | 'results' | 'curves'
 
 type RunSnapshot = {
   digest: string
@@ -119,12 +123,15 @@ function PanelShell() {
   const navItems = [
     { id: 'library' as const, label: 'Biblioteca', Icon: Library },
     { id: 'designer' as const, label: 'Diseñador', Icon: FlaskConical },
+    { id: 'characterize' as const, label: 'Caracterización', Icon: Activity },
     { id: 'results' as const, label: 'Ejecución', Icon: Activity },
     { id: 'curves' as const, label: 'Curvas', Icon: Gauge },
   ]
   const title =
     activeView === 'library'
       ? 'Biblioteca'
+      : activeView === 'characterize'
+        ? 'Caracterización'
       : activeView === 'results'
         ? 'Ejecución y resultados'
         : activeView === 'curves'
@@ -133,6 +140,8 @@ function PanelShell() {
   const subtitle =
     activeView === 'library'
       ? 'experimentos persistentes JSON'
+      : activeView === 'characterize'
+        ? 'estado analítico del enlace'
       : activeView === 'results'
         ? 'jobs, métricas, eventos y guardado'
         : activeView === 'curves'
@@ -152,7 +161,7 @@ function PanelShell() {
               <p className="font-mono text-xs text-slate-400">laboratorio local</p>
             </div>
           </div>
-          <nav className="grid gap-1 text-sm text-slate-300 sm:grid-cols-4 lg:block lg:space-y-1">
+          <nav className="grid gap-1 text-sm text-slate-300 sm:grid-cols-5 lg:block lg:space-y-1">
             {navItems.map(({ id, label, Icon }) => (
               <button
                 className={`flex items-center gap-3 rounded px-3 py-2 text-left hover:bg-white/5 ${
@@ -230,10 +239,19 @@ function PanelShell() {
                 setActiveView('designer')
               }}
             />
+          ) : activeView === 'characterize' ? (
+            <CharacterizationView
+              scenario={scenario}
+              sweepableFields={sweepableFields}
+            />
           ) : activeView === 'results' ? (
             <ExecutionView scenario={scenario} />
           ) : (
-            <PlaceholderView />
+            <CurvesView
+              metrics={catalog.data?.metrics ?? []}
+              scenario={scenario}
+              sweepableFields={sweepableFields}
+            />
           )}
         </section>
       </div>
@@ -286,6 +304,7 @@ function ExecutionView({ scenario }: { scenario: Record<string, unknown> }) {
   const [runs, setRuns] = useState<RunSnapshot[]>([])
   const latestRun = runs.at(-1) ?? null
   const previousRun = runs.length > 1 ? runs.at(-2) ?? null : null
+  const pulses = Number(readTarget(scenario, 'scenario.pulses') ?? 0)
   const runMutation = useMutation({
     mutationFn: async (): Promise<RunSnapshot> => {
       const created = await createRun(scenario, label)
@@ -376,6 +395,11 @@ function ExecutionView({ scenario }: { scenario: Record<string, unknown> }) {
         ) : null}
         {runMutation.error ? (
           <p className="mt-3 text-sm text-danger">{runMutation.error.message}</p>
+        ) : null}
+        {pulses > 100_000 ? (
+          <p className="mt-3 text-sm text-warning">
+            Aviso de coste: este escenario supera 1e5 pulsos y puede tardar minutos.
+          </p>
         ) : null}
       </section>
       {latestRun ? (
@@ -533,6 +557,11 @@ function LibraryView({
                 <p className="mt-1 font-mono text-xs text-slate-500">
                   {experiment.digest.slice(0, 12)}
                 </p>
+                {experiment.curve_recipes?.length ? (
+                  <p className="mt-1 text-xs text-cyan">
+                    {experiment.curve_recipes.length} receta(s) de curva
+                  </p>
+                ) : null}
               </div>
               <StatusBadge summary={experiment.last_result ?? {}} />
             </div>
@@ -577,11 +606,273 @@ function LibraryView({
   )
 }
 
-function PlaceholderView() {
+function CharacterizationView({
+  scenario,
+  sweepableFields,
+}: {
+  scenario: Record<string, unknown>
+  sweepableFields: CatalogField[]
+}) {
+  const [section, setSection] = useState<'source' | 'channel' | 'detector' | 'timing'>('source')
+  const [axisTarget, setAxisTarget] = useState('channel.distance_km')
+  const [start, setStart] = useState(0)
+  const [stop, setStop] = useState(100)
+  const state = useQuery({
+    queryKey: ['characterize-view', section, scenario],
+    queryFn: () => characterize(section, scenario),
+  })
+  const axis: AxisRequest = {
+    target: axisTarget,
+    values: { start, stop, steps: 25, scale: 'linear' },
+  }
+  const curve = useQuery({
+    queryKey: ['characterize-curve', section, scenario, axis],
+    queryFn: () => characterize(section, scenario, axis),
+  })
+  const stateRows = Object.entries(state.data?.state ?? {})
+  const rows = curve.data?.rows ?? []
+  const yKey = firstNumericKey(rows, axisTarget)
+
   return (
-    <section className="rounded border border-border bg-surface p-4 text-sm text-slate-400">
-      La vista de curvas queda para la Fase 5; el selector ya está reservado.
-    </section>
+    <div className="space-y-5">
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="flex flex-wrap gap-2">
+          {(['source', 'channel', 'detector', 'timing'] as const).map((item) => (
+            <button
+              className={`rounded px-3 py-1 text-sm ${
+                section === item ? 'bg-cyan/10 text-cyan' : 'text-slate-400 hover:text-white'
+              }`}
+              key={item}
+              onClick={() => setSection(item)}
+              type="button"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <p className="mt-4 font-mono text-xs text-slate-500">{formulaForSection(section)}</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {stateRows.slice(0, 12).map(([key, value]) => (
+            <MetricCard key={key} label={key} value={formatNumberOrText(value)} />
+          ))}
+        </div>
+      </section>
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_120px_120px]">
+          <label className="block">
+            <span className="text-xs text-slate-500">axis</span>
+            <select
+              className="mt-1 h-9 w-full rounded border border-border bg-background px-2 font-mono text-xs text-white outline-none focus:border-cyan"
+              onChange={(event) => setAxisTarget(event.target.value)}
+              value={axisTarget}
+            >
+              {sweepableFields.map((field) => (
+                <option key={field.key} value={field.key}>
+                  {field.key}
+                </option>
+              ))}
+            </select>
+          </label>
+          <MiniNumberInput label="start" onChange={setStart} value={start} />
+          <MiniNumberInput label="stop" onChange={setStop} value={stop} />
+        </div>
+        <div className="mt-4 h-72">
+          <Plot
+            config={{ displayModeBar: true, responsive: true }}
+            data={[
+              {
+                x: rows.map((row) => Number(row[axisTarget] ?? 0)),
+                y: rows.map((row) => Number(row[yKey] ?? 0)),
+                mode: 'lines+markers',
+                type: 'scatter',
+                marker: { color: '#22d3ee' },
+                line: { color: '#22d3ee' },
+              },
+            ]}
+            layout={{
+              ...qkdPlotlyLayout,
+              autosize: true,
+              height: 280,
+              xaxis: { ...qkdPlotlyLayout.xaxis, title: { text: axisTarget } },
+              yaxis: { ...qkdPlotlyLayout.yaxis, title: { text: yKey } },
+            }}
+            style={{ height: '100%', width: '100%' }}
+          />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function CurvesView({
+  metrics,
+  scenario,
+  sweepableFields,
+}: {
+  metrics: Array<{ key: string; label_es: string; unit: string | null }>
+  scenario: Record<string, unknown>
+  sweepableFields: CatalogField[]
+}) {
+  const [axisTarget, setAxisTarget] = useState('channel.distance_km')
+  const [metric, setMetric] = useState('secret_key_rate_bps')
+  const [start, setStart] = useState(0)
+  const [stop, setStop] = useState(120)
+  const [steps, setSteps] = useState(5)
+  const [repeats, setRepeats] = useState(1)
+  const [scale, setScale] = useState<'linear' | 'log'>('linear')
+  const [seriesTarget, setSeriesTarget] = useState('')
+  const [seriesValues, setSeriesValues] = useState('0.6, 0.8, 0.95')
+  const [sweepStatus, setSweepStatus] = useState<JobStatus | null>(null)
+  const [activeSweepId, setActiveSweepId] = useState<string | null>(null)
+  const sweep = useMutation({
+    mutationFn: async (): Promise<Record<string, unknown>> => {
+      const axis: AxisRequest = { target: axisTarget, values: { start, stop, steps, scale } }
+      const series = seriesTarget
+        ? { target: seriesTarget, values: parseSeriesValues(seriesValues) }
+        : null
+      const created = await createSweep({ scenario, axis, series, repeats })
+      setActiveSweepId(created.job_id)
+      let status = await fetchSweepStatus(created.job_id)
+      setSweepStatus(status)
+      while (status.status === 'queued' || status.status === 'running') {
+        await delay(500)
+        status = await fetchSweepStatus(created.job_id)
+        setSweepStatus(status)
+      }
+      setActiveSweepId(null)
+      if (status.status !== 'done' || !status.result) {
+        throw new Error(status.error ?? `sweep ${status.status}`)
+      }
+      return status.result
+    },
+    onError: () => setActiveSweepId(null),
+  })
+  const cancel = useMutation({
+    mutationFn: async () => (activeSweepId ? cancelSweep(activeSweepId) : { cancelled: false }),
+    onSuccess: () => {
+      setSweepStatus((current) => (current ? { ...current, status: 'cancelled' } : current))
+      setActiveSweepId(null)
+    },
+  })
+  const saveRecipe = useMutation({
+    mutationFn: async () =>
+      createExperiment({
+        name: `Curva ${metric} vs ${axisTarget}`,
+        scenario,
+        tags: ['curve'],
+        curve_recipes: [
+          {
+            axis: { target: axisTarget, values: { start, stop, steps, scale } },
+            metric,
+            repeats,
+            series: seriesTarget
+              ? { target: seriesTarget, values: parseSeriesValues(seriesValues) }
+              : null,
+          },
+        ],
+        last_result: sweep.data ?? null,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+  const rows = Array.isArray(sweep.data?.rows) ? sweep.data.rows.filter(isRecord) : []
+  const summaryRows = Array.isArray(sweep.data?.summary)
+    ? sweep.data.summary.filter(isRecord)
+    : []
+  const plotRows = summaryRows.some((row) => `${metric}_mean` in row) ? summaryRows : rows
+  const traces = curveTraces(plotRows, axisTarget, metric, seriesTarget)
+  const progress = sweepStatus?.progress
+  const progressPercent = progress && progress.total > 0 ? (100 * progress.done) / progress.total : 0
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_1fr_100px_100px_100px_110px]">
+          <SelectField label="eje X" onChange={setAxisTarget} options={['time_s', ...sweepableFields.map((field) => field.key)]} value={axisTarget} />
+          <SelectField label="métrica Y" onChange={setMetric} options={metrics.map((item) => item.key)} value={metric} />
+          <MiniNumberInput label="start" onChange={setStart} value={start} />
+          <MiniNumberInput label="stop" onChange={setStop} value={stop} />
+          <MiniNumberInput label="steps" onChange={(value) => setSteps(Math.max(1, Math.round(value)))} value={steps} />
+          <MiniNumberInput label="repeats" onChange={(value) => setRepeats(Math.max(1, Math.round(value)))} value={repeats} />
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr]">
+          <SelectField
+            label="serie"
+            onChange={setSeriesTarget}
+            options={['', ...sweepableFields.map((field) => field.key)]}
+            value={seriesTarget}
+          />
+          <label className="block">
+            <span className="text-xs text-slate-500">valores serie</span>
+            <input
+              className="mt-1 h-9 w-full rounded border border-border bg-background px-3 font-mono text-xs text-white outline-none focus:border-cyan"
+              disabled={!seriesTarget}
+              onChange={(event) => setSeriesValues(event.target.value)}
+              value={seriesValues}
+            />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className={scaleButtonClass(scale === 'linear')} onClick={() => setScale('linear')} type="button">lin</button>
+          <button className={scaleButtonClass(scale === 'log')} onClick={() => setScale('log')} type="button">log</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('skr', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">SKR vs distancia</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('qber', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">QBER vs distancia</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('eve', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">QBER vs Eve</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('chsh', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">CHSH vs depol</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('decoy', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">gain vs μ</button>
+          <button className="rounded border border-border px-2 py-1 text-xs text-slate-300" onClick={() => applyCurveShortcut('time', setAxisTarget, setMetric, setStart, setStop, setSteps, setScale)} type="button">métricas vs tiempo</button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="flex h-9 items-center gap-2 rounded border border-cyan px-3 text-sm text-cyan hover:bg-cyan/10 disabled:opacity-50" disabled={sweep.isPending} onClick={() => sweep.mutate()} type="button">
+            <Play size={15} aria-hidden="true" />
+            Ejecutar barrido
+          </button>
+          <button className="flex h-9 items-center gap-2 rounded border border-border px-3 text-sm text-slate-300 hover:border-warning hover:text-warning disabled:opacity-50" disabled={!activeSweepId} onClick={() => cancel.mutate()} type="button">
+            <Square size={15} aria-hidden="true" />
+            Cancelar
+          </button>
+          <button className="flex h-9 items-center gap-2 rounded border border-border px-3 text-sm text-slate-300 hover:text-white disabled:opacity-50" disabled={rows.length === 0} onClick={() => downloadCsv(rows, `${metric}.csv`)} type="button">
+            <Download size={15} aria-hidden="true" />
+            CSV
+          </button>
+          <button className="flex h-9 items-center gap-2 rounded border border-border px-3 text-sm text-slate-300 hover:text-white disabled:opacity-50" disabled={rows.length === 0} onClick={() => downloadCurveSvg(rows, axisTarget, metric)} type="button">
+            <Download size={15} aria-hidden="true" />
+            SVG
+          </button>
+          <button className="flex h-9 items-center gap-2 rounded border border-success px-3 text-sm text-success hover:bg-success/10 disabled:opacity-50" disabled={saveRecipe.isPending} onClick={() => saveRecipe.mutate()} type="button">
+            <Save size={15} aria-hidden="true" />
+            Guardar receta
+          </button>
+        </div>
+        {saveRecipe.data ? (
+          <p className="mt-2 font-mono text-xs text-success">
+            receta guardada {saveRecipe.data.experiment.id}
+          </p>
+        ) : null}
+        {sweepStatus ? (
+          <div className="mt-4 h-2 overflow-hidden rounded bg-background">
+            <div className="h-full bg-cyan" style={{ width: `${progressPercent}%` }} />
+          </div>
+        ) : null}
+        {sweep.error ? <p className="mt-3 text-sm text-danger">{sweep.error.message}</p> : null}
+      </section>
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="h-96">
+          <Plot
+            config={{ displayModeBar: true, responsive: true, toImageButtonOptions: { format: 'png' } }}
+            data={traces}
+            layout={{
+              ...qkdPlotlyLayout,
+              autosize: true,
+              height: 380,
+              shapes: metric === 'qber' ? [{ type: 'line', x0: start, x1: stop, y0: 0.11, y1: 0.11, line: { color: '#fbbf24', dash: 'dot' } }] : [],
+              xaxis: { ...qkdPlotlyLayout.xaxis, title: { text: axisTarget } },
+              yaxis: { ...qkdPlotlyLayout.yaxis, title: { text: metric } },
+            }}
+            style={{ height: '100%', width: '100%' }}
+          />
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -1286,8 +1577,235 @@ function JsonBlock({ value }: { value: unknown }) {
   )
 }
 
+function SelectField({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: string[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs text-slate-500">{label}</span>
+      <select
+        className="mt-1 h-9 w-full rounded border border-border bg-background px-2 font-mono text-xs text-white outline-none focus:border-cyan"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function metricRecord(summary: Record<string, unknown>): Record<string, unknown> {
   return isRecord(summary.metrics) ? summary.metrics : summary
+}
+
+function firstNumericKey(rows: Array<Record<string, unknown>>, excluded: string): string {
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(row)) {
+      if (key !== excluded && typeof value === 'number') {
+        return key
+      }
+    }
+  }
+  return excluded
+}
+
+function formulaForSection(section: string): string {
+  const formulas: Record<string, string> = {
+    source: 'P(0)=e^-μ · P(1)=μe^-μ · P(≥2)=1-e^-μ(1+μ)',
+    channel: 'η = 10^(-loss_dB/10)',
+    detector: 'p_dark = 1 - exp(-rate · gate)',
+    timing: 'p_in_gate = erf(g / (2√2σ))',
+  }
+  return formulas[section] ?? ''
+}
+
+function formatNumberOrText(value: unknown): string {
+  return typeof value === 'number' ? formatNumber(value) : formatInputValue(value)
+}
+
+function scaleButtonClass(active: boolean): string {
+  return `rounded border px-2 py-1 text-xs ${
+    active ? 'border-cyan text-cyan' : 'border-border text-slate-300'
+  }`
+}
+
+function applyCurveShortcut(
+  kind: 'skr' | 'qber' | 'eve' | 'chsh' | 'decoy' | 'time',
+  setAxisTarget: (value: string) => void,
+  setMetric: (value: string) => void,
+  setStart: (value: number) => void,
+  setStop: (value: number) => void,
+  setSteps: (value: number) => void,
+  setScale: (value: 'linear' | 'log') => void,
+): void {
+  if (kind === 'eve') {
+    setAxisTarget('eavesdropper.intercept_probability')
+    setMetric('qber')
+    setStart(0)
+    setStop(1)
+    setSteps(11)
+    setScale('linear')
+    return
+  }
+  if (kind === 'chsh') {
+    setAxisTarget('channel.depolarizing_probability')
+    setMetric('chsh_s')
+    setStart(0)
+    setStop(0.2)
+    setSteps(11)
+    setScale('linear')
+    return
+  }
+  if (kind === 'decoy') {
+    setAxisTarget('source.mean_photon_number')
+    setMetric('gain')
+    setStart(0.01)
+    setStop(0.8)
+    setSteps(12)
+    setScale('linear')
+    return
+  }
+  if (kind === 'time') {
+    setAxisTarget('time_s')
+    setMetric('qber')
+    setStart(0)
+    setStop(0.001)
+    setSteps(8)
+    setScale('linear')
+    return
+  }
+  setAxisTarget('channel.distance_km')
+  setMetric(kind === 'skr' ? 'secret_key_rate_bps' : 'qber')
+  setStart(0)
+  setStop(150)
+  setSteps(16)
+  setScale('linear')
+}
+
+function parseSeriesValues(value: string): Array<number | string | boolean | null> {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      if (part === 'true') {
+        return true
+      }
+      if (part === 'false') {
+        return false
+      }
+      if (part === 'null') {
+        return null
+      }
+      const numeric = Number(part)
+      return Number.isFinite(numeric) ? numeric : part
+    })
+}
+
+function curveTraces(
+  rows: Array<Record<string, unknown>>,
+  xKey: string,
+  metric: string,
+  seriesKey: string,
+): Array<Record<string, unknown>> {
+  const groups = new Map<string, Array<Record<string, unknown>>>()
+  for (const row of rows) {
+    const group = seriesKey ? String(row[seriesKey] ?? 'serie') : metric
+    groups.set(group, [...(groups.get(group) ?? []), row])
+  }
+  const colors = ['#22d3ee', '#34d399', '#fbbf24', '#8b5cf6', '#f87171', '#e5e7eb']
+  return Array.from(groups.entries()).flatMap(([name, groupRows], index) => {
+    const color = colors[index % colors.length]
+    const meanKey = `${metric}_mean`
+    const p05Key = `${metric}_p05`
+    const p95Key = `${metric}_p95`
+    const yKey = meanKey in (groupRows[0] ?? {}) ? meanKey : metric
+    const line = {
+      x: groupRows.map((row) => Number(row[xKey] ?? 0)),
+      y: groupRows.map((row) => Number(row[yKey] ?? 0)),
+      mode: 'lines+markers',
+      name,
+      type: 'scatter',
+      marker: { color },
+      line: { color },
+    }
+    if (!(p05Key in (groupRows[0] ?? {})) || !(p95Key in (groupRows[0] ?? {}))) {
+      return [line]
+    }
+    return [
+      {
+        x: groupRows.map((row) => Number(row[xKey] ?? 0)),
+        y: groupRows.map((row) => Number(row[p95Key] ?? 0)),
+        hoverinfo: 'skip',
+        line: { color: 'transparent' },
+        name: `${name} p95`,
+        showlegend: false,
+        type: 'scatter',
+      },
+      {
+        x: groupRows.map((row) => Number(row[xKey] ?? 0)),
+        y: groupRows.map((row) => Number(row[p05Key] ?? 0)),
+        fill: 'tonexty',
+        fillcolor: `${color}33`,
+        hoverinfo: 'skip',
+        line: { color: 'transparent' },
+        name: `${name} p05`,
+        showlegend: false,
+        type: 'scatter',
+      },
+      line,
+    ]
+  })
+}
+
+function downloadCsv(rows: Array<Record<string, unknown>>, fileName: string): void {
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))))
+  const csv = [
+    headers.join(','),
+    ...rows.map((row) =>
+      headers.map((header) => JSON.stringify(row[header] ?? '')).join(','),
+    ),
+  ].join('\n')
+  downloadBlob(fileName, csv, 'text/csv')
+}
+
+function downloadCurveSvg(
+  rows: Array<Record<string, unknown>>,
+  xKey: string,
+  yKey: string,
+): void {
+  const width = 720
+  const height = 420
+  const points = rows
+    .map((row) => [Number(row[xKey] ?? 0), Number(row[yKey] ?? 0)] as const)
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+  const xs = points.map(([x]) => x)
+  const ys = points.map(([, y]) => y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const path = points
+    .map(([x, y], index) => {
+      const px = 60 + ((x - minX) / Math.max(maxX - minX, 1)) * (width - 100)
+      const py = height - 50 - ((y - minY) / Math.max(maxY - minY, 1)) * (height - 100)
+      return `${index === 0 ? 'M' : 'L'} ${px.toFixed(2)} ${py.toFixed(2)}`
+    })
+    .join(' ')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="transparent"/><path d="${path}" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="60" y="28" fill="#111827" font-family="monospace">${yKey} vs ${xKey}</text></svg>`
+  downloadBlob(`${safeFileName(yKey)}.svg`, svg, 'image/svg+xml')
 }
 
 async function exportToFile(experiment: Experiment): Promise<void> {
@@ -1309,7 +1827,11 @@ async function importFromFile(
 }
 
 function downloadJson(fileName: string, value: unknown): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  downloadBlob(fileName, JSON.stringify(value, null, 2), 'application/json')
+}
+
+function downloadBlob(fileName: string, value: string, type: string): void {
+  const blob = new Blob([value], { type })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

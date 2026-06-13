@@ -22,6 +22,19 @@ npm.cmd run dev
 La web queda disponible en `http://127.0.0.1:5173` y usa el proxy de Vite para
 leer la API en `/api`.
 
+## Modo demo
+
+Genera el build y sirve la API + SPA desde un solo proceso:
+
+```powershell
+cd panel\web
+npm.cmd run build
+cd ..\..
+..\.venv\Scripts\python.exe -m panel.api
+```
+
+El navegador se abre en `http://127.0.0.1:8000`.
+
 ## Verificacion rapida
 
 ```powershell

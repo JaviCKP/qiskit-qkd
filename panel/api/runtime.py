@@ -79,6 +79,7 @@ def sweep_scenario_job(
                 metrics=("qber", "secret_key_rate_bps", "gain", "detected"),
             ),
         }
+    scenario = ParameterResolver().scenario_at(scenario, time_s=0.0)
     axis_target = validate_parameter_target(str(axis["target"]))
     group_by = [axis_target]
     all_rows: list[dict[str, Any]] = []

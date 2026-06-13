@@ -58,6 +58,22 @@ python -m pytest
 python -m ruff check .
 ```
 
+## Visual QKD Panel
+
+The local dashboard lives in `panel/` and provides the React/FastAPI workflow
+for designing scenarios, characterizing the link, running jobs, saving
+experiments, and generating curve studies.
+
+```powershell
+cd panel\web
+npm.cmd install
+npm.cmd run build
+cd ..\..
+python -m panel.api
+```
+
+The demo serves the built web app and API at `http://127.0.0.1:8000`.
+
 ## Ideal BB84 Demo
 
 ```powershell
