@@ -22,14 +22,6 @@ class TimingOutcome:
     signal_assigned_slot: int | None
     timing_status: str
 
-    @property
-    def gate_center_s(self) -> float:
-        return (self.bob_gate_start_s + self.bob_gate_end_s) / 2
-
-    @property
-    def signal_in_window(self) -> bool:
-        return self.signal_assigned_slot is not None
-
 
 def assign_timing(
     *,
@@ -99,16 +91,17 @@ def assign_timing(
                 gate_width_s=gate_width_s,
                 timing=timing,
             )
-            return TimingOutcome(
-                time_slot=time_slot,
-                emission_time_s=emission_time_s,
-                expected_arrival_time_s=expected_arrival_time_s,
-                arrival_time_s=arrival_time_s,
-                bob_gate_start_s=assigned_start_s,
-                bob_gate_end_s=assigned_end_s,
-                signal_assigned_slot=assigned_slot,
-                timing_status="assigned_nearest",
-            )
+            if assigned_start_s <= arrival_time_s <= assigned_end_s:
+                return TimingOutcome(
+                    time_slot=time_slot,
+                    emission_time_s=emission_time_s,
+                    expected_arrival_time_s=expected_arrival_time_s,
+                    arrival_time_s=arrival_time_s,
+                    bob_gate_start_s=assigned_start_s,
+                    bob_gate_end_s=assigned_end_s,
+                    signal_assigned_slot=assigned_slot,
+                    timing_status="assigned_nearest",
+                )
 
     timing_status = "early" if arrival_time_s < current_start_s else "late"
     return TimingOutcome(

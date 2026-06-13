@@ -34,7 +34,7 @@ TIMING_STATUSES = {
 def _validate_bit(name: str, value: int | None) -> int | None:
     if value is None:
         return None
-    if value not in {0, 1}:
+    if not isinstance(value, int) or isinstance(value, bool) or value not in {0, 1}:
         raise ValueError(f"{name} must be 0, 1, or None")
     return value
 
@@ -83,6 +83,7 @@ class Event:
     # Source and channel outcomes.
     emitted: bool = False
     photon_number: int = 0
+    surviving_photon_number: int | None = None
     intensity_class: str | None = None
     transmitted: bool = False
 
@@ -189,11 +190,21 @@ class Event:
             "photon_number",
             require_non_negative_int("photon_number", self.photon_number),
         )
+        transmitted = require_bool("transmitted", self.transmitted)
+        object.__setattr__(self, "transmitted", transmitted)
+        surviving_photon_number = self.surviving_photon_number
+        if surviving_photon_number is None:
+            surviving_photon_number = min(self.photon_number, 1) if transmitted else 0
         object.__setattr__(
             self,
-            "transmitted",
-            require_bool("transmitted", self.transmitted),
+            "surviving_photon_number",
+            require_non_negative_int(
+                "surviving_photon_number",
+                surviving_photon_number,
+            ),
         )
+        if self.surviving_photon_number > self.photon_number:
+            raise ValueError("surviving_photon_number cannot exceed photon_number")
         object.__setattr__(self, "detected", require_bool("detected", self.detected))
         object.__setattr__(
             self,
@@ -264,6 +275,7 @@ class Event:
             "bob_basis": self.bob_basis,
             "emitted": self.emitted,
             "photon_number": self.photon_number,
+            "surviving_photon_number": self.surviving_photon_number,
             "intensity_class": self.intensity_class,
             "transmitted": self.transmitted,
             "detected": self.detected,
@@ -302,6 +314,7 @@ class Event:
                 "bob_basis",
                 "emitted",
                 "photon_number",
+                "surviving_photon_number",
                 "transmitted",
                 "detected",
                 "detection_origin",
@@ -335,6 +348,7 @@ class Event:
             bob_basis=data.get("bob_basis"),
             emitted=data.get("emitted", False),
             photon_number=data.get("photon_number", 0),
+            surviving_photon_number=data.get("surviving_photon_number"),
             intensity_class=data.get("intensity_class"),
             transmitted=data.get("transmitted", False),
             detected=data.get("detected", False),

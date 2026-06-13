@@ -1,4 +1,16 @@
-from qiskit_qkd import PostProcessingConfig, Scenario, SimulationResult
+from dataclasses import replace
+
+import pytest
+
+from qiskit_qkd import (
+    ConstantProfile,
+    DynamicConfig,
+    ParameterSchedule,
+    PostProcessingConfig,
+    Scenario,
+    SimulationResult,
+    SourceConfig,
+)
 from qiskit_qkd.backends import QiskitSamplerBackend
 from qiskit_qkd.protocols import BB84Protocol
 
@@ -81,6 +93,19 @@ def test_bb84_event_sample_size_is_respected() -> None:
     assert result.summary()["event_sample_size"] == 5
 
 
+def test_bb84_event_sample_is_deterministic_and_not_just_the_prefix() -> None:
+    scenario = build_scenario(pulses=100, seed=24, event_sample_size=5)
+
+    first = BB84Protocol().run(scenario, backend=BatchOnlyBackend())
+    second = BB84Protocol().run(scenario, backend=BatchOnlyBackend())
+    first_indexes = [event.index for event in first.event_sample]
+
+    assert first_indexes == [event.index for event in second.event_sample]
+    assert len(first_indexes) == scenario.event_sample_size
+    assert first_indexes != list(range(scenario.event_sample_size))
+    assert first_indexes == sorted(first_indexes)
+
+
 def test_bb84_uses_batched_backend_without_full_event_log() -> None:
     scenario = build_scenario(pulses=16, seed=29, event_sample_size=3)
     backend = BatchOnlyBackend()
@@ -104,3 +129,46 @@ def test_bb84_returns_classical_postprocessing_summary_without_full_event_log() 
     assert result.classical["candidate_key_length"] == result.metrics.sifted
     assert result.classical["estimated_qber"] == result.metrics.qber
     assert result.classical["leak_ec"] > 0
+
+
+def test_bb84_rejects_entangled_pair_sources() -> None:
+    scenario = replace(
+        build_scenario(pulses=16, seed=37),
+        source=SourceConfig(kind="entangled_pair"),
+    )
+
+    with pytest.raises(ValueError, match="prepare-and-measure source"):
+        BB84Protocol().run(scenario, backend=BatchOnlyBackend())
+
+
+def test_bb84_rejects_unresolved_dynamic_schedules() -> None:
+    scenario = replace(
+        build_scenario(pulses=16, seed=41),
+        dynamic=DynamicConfig(
+            parameter_schedules=(
+                ParameterSchedule(
+                    target="channel.distance_km",
+                    profile=ConstantProfile(start_s=0.0, end_s=1.0, value=5.0),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="dynamic schedules"):
+        BB84Protocol().run(scenario, backend=BatchOnlyBackend())
+
+
+def test_bb84_without_sifting_keeps_all_detections_as_key_candidates() -> None:
+    scenario = replace(
+        build_scenario(pulses=1_024, seed=43),
+        post_processing=PostProcessingConfig(
+            sifting_enabled=False,
+            qber_abort_threshold=None,
+        ),
+    )
+
+    result = BB84Protocol().run(scenario, backend=QiskitSamplerBackend(seed=43))
+
+    assert result.metrics.detected == scenario.pulses
+    assert result.metrics.sifted == result.metrics.detected
+    assert abs(result.metrics.qber - 0.25) <= 0.06

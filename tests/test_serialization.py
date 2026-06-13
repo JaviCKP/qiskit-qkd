@@ -127,6 +127,7 @@ def test_event_serialization_order_follows_round_lifecycle() -> None:
         "bob_basis",
         "emitted",
         "photon_number",
+        "surviving_photon_number",
         "intensity_class",
         "transmitted",
         "detected",
@@ -143,6 +144,21 @@ def test_event_serialization_order_follows_round_lifecycle() -> None:
         "eve_detectable",
         "tags",
     ]
+
+
+def test_event_from_legacy_payload_derives_surviving_photon_number() -> None:
+    payload = Event(
+        index=0,
+        time_s=0.0,
+        emitted=True,
+        photon_number=1,
+        transmitted=True,
+    ).to_dict()
+    del payload["surviving_photon_number"]
+
+    restored = Event.from_dict(payload)
+
+    assert restored.surviving_photon_number == 1
 
 
 def test_event_sample_is_not_stored_by_default() -> None:
@@ -163,9 +179,11 @@ def test_event_sample_is_not_stored_by_default() -> None:
         lambda: Event(index=-1, time_s=0.0),
         lambda: Event(index=0, time_s=-0.1),
         lambda: Event(index=0, time_s=0.0, alice_bit=2),
+        lambda: Event(index=0, time_s=0.0, alice_bit=True),
         lambda: Event(index=0, time_s=0.0, detection_origin="lost"),
         lambda: Metrics(pulses=10, emitted=11),
         lambda: Metrics(pulses=10, emitted=5, transmitted=6),
+        lambda: Metrics(pulses=10, detected=1, sifted=2),
         lambda: Metrics(pulses=10, sifted=1, errors=2),
         lambda: Metrics(pulses=10, qber=1.1),
         lambda: Metrics(pulses=10, chsh_s=4.1),

@@ -1,5 +1,34 @@
 """Analysis helpers for QKD simulation outputs."""
 
-from .sweeps import sweep_bb84_distance
+from .bell import BellRow, BellRowValue, bell_rows_from_result
+from .decoy import DecoyRow, DecoyRowValue, decoy_rows_from_result
+from .metrics import (
+    MetricRow,
+    MetricRowValue,
+    add_derived_metrics,
+    chsh_margin,
+    metric_rows_from_results,
+    qber_margin,
+    secure_distance_limit,
+    summarize_metric_rows,
+)
+from .sweeps import sweep_bb84_distance, sweep_bb84_time
 
-__all__ = ["sweep_bb84_distance"]
+__all__ = [
+    "BellRow",
+    "BellRowValue",
+    "DecoyRow",
+    "DecoyRowValue",
+    "MetricRow",
+    "MetricRowValue",
+    "add_derived_metrics",
+    "bell_rows_from_result",
+    "chsh_margin",
+    "decoy_rows_from_result",
+    "metric_rows_from_results",
+    "qber_margin",
+    "secure_distance_limit",
+    "summarize_metric_rows",
+    "sweep_bb84_distance",
+    "sweep_bb84_time",
+]

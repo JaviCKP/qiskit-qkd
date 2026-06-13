@@ -2,24 +2,43 @@
 
 from __future__ import annotations
 
-from qiskit_qkd.config import ChannelConfig
-
+from .characterization import (
+    ChannelCharacterizer,
+    ChannelState,
+    channel_state_from_scenario,
+)
+from .factory import ConcreteChannel, channel_from_config
 from .fiber import FiberChannel
 from .ideal import IdealChannel
+from .impairments import (
+    chromatic_broadening_s,
+    effective_background_count_rate_hz,
+    effective_jitter_std_s,
+    pdl_transmittance_factor,
+    pmd_broadening_s,
+    raman_count_rate_hz,
+    scattering_broadening_s,
+    temporal_broadening_s,
+)
+from .space import FreeSpaceChannel, SpaceChannel, UnderwaterChannel
 
-__all__ = ["FiberChannel", "IdealChannel", "channel_from_config"]
-
-
-def channel_from_config(config: ChannelConfig) -> FiberChannel | IdealChannel:
-    """Build a concrete channel model from validated scenario configuration."""
-
-    kind = config.kind.lower()
-    if kind == "fiber":
-        return FiberChannel(
-            distance_km=config.distance_km,
-            attenuation_db_km=config.attenuation_db_km,
-            fixed_loss_db=config.fixed_loss_db,
-        )
-    if kind == "ideal":
-        return IdealChannel()
-    raise ValueError(f"Unsupported channel kind: {config.kind!r}")
+__all__ = [
+    "ChannelCharacterizer",
+    "ChannelState",
+    "ConcreteChannel",
+    "FiberChannel",
+    "FreeSpaceChannel",
+    "IdealChannel",
+    "SpaceChannel",
+    "UnderwaterChannel",
+    "channel_from_config",
+    "channel_state_from_scenario",
+    "chromatic_broadening_s",
+    "effective_background_count_rate_hz",
+    "effective_jitter_std_s",
+    "pdl_transmittance_factor",
+    "pmd_broadening_s",
+    "raman_count_rate_hz",
+    "scattering_broadening_s",
+    "temporal_broadening_s",
+]

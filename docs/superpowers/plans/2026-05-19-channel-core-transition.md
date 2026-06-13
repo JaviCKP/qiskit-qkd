@@ -33,14 +33,27 @@ Aer, pytest, ruff.
   optional privacy-amplification digest.
 - [x] Added `SimulationResult.classical` as the JSON-safe public container for
   post-processing diagnostics.
+- [x] Added Phase 4 Aer `NoiseModel` adapters, controlled transpilation, and
+  Qiskit/Aer provenance without moving no-click physics out of the event layer.
+- [x] Added layered physical noise extensions: source preparation error,
+  coherent polarization misalignment, and optical background clicks.
+- [x] Added Phase 4.1 dynamic parameter schedules, channel characterization
+  rows, and temporal BB84 sweeps for plot-ready analysis data.
+- [x] Added Phase 5 BB84 Eve models with `NoEve`, `InterceptResendEve`, event
+  traces, and aggregate Eve metrics.
+- [x] Added Phase 6 weak-coherent decoy-state source sampling, multi-photon
+  channel survival, and per-intensity BB84 statistics.
+- [x] Added Phase 6.2 asymptotic vacuum+weak decoy estimates and
+  photon-number-splitting Eve traces.
+- [x] Added Phase 7 E91 with Bell-pair circuits, CHSH diagnostics, source-pair
+  imperfections, and plot-ready Bell rows.
+- [x] Added Phase 8 non-fiber optical channel families for deep-space,
+  free-space/satellite, and underwater QKD link studies.
 
 ## Deferred Roadmap
 
-- [ ] Phase 4: Eve BB84 with `NoEve` and `InterceptResendEve`.
-- [ ] Phase 5: decoy BB84 with weak coherent sources and per-intensity stats.
-- [ ] Phase 6: Aer `NoiseModel` adapters and transpilation options.
-- [ ] Phase 7: E91 with Bell-pair circuits and CHSH.
-- [ ] Phase 8: CLI, presets, JSON export, and static dashboard.
+- [ ] Phase 9: plotting helpers, CLI, presets, JSON export, and static
+  dashboard.
 
 ## Verification
 

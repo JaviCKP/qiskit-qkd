@@ -8,7 +8,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from qiskit_qkd._json import JSONObject
-from qiskit_qkd._validation import require_non_negative_int, require_probability
+from qiskit_qkd._validation import (
+    require_bool,
+    require_non_negative_int,
+    require_probability,
+)
 from qiskit_qkd.config import PostProcessingConfig
 from qiskit_qkd.results import Event
 
@@ -17,7 +21,11 @@ from .key_rate import binary_entropy
 
 def _validate_bits(name: str, bits: Sequence[int]) -> tuple[int, ...]:
     normalized = tuple(bits)
-    invalid = [bit for bit in normalized if bit not in {0, 1}]
+    invalid = [
+        bit
+        for bit in normalized
+        if not isinstance(bit, int) or isinstance(bit, bool) or bit not in {0, 1}
+    ]
     if invalid:
         raise ValueError(f"{name} must contain only 0 and 1 values")
     return normalized
@@ -70,6 +78,7 @@ class ClassicalPostProcessingResult:
     residual_mismatches: int
     final_key_length: int
     final_key_digest: str | None
+    verification_passed: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -94,6 +103,12 @@ class ClassicalPostProcessingResult:
             "estimated_qber",
             require_probability("estimated_qber", self.estimated_qber),
         )
+        object.__setattr__(self, "abort", require_bool("abort", self.abort))
+        object.__setattr__(
+            self,
+            "verification_passed",
+            require_bool("verification_passed", self.verification_passed),
+        )
 
     def to_dict(self) -> JSONObject:
         return {
@@ -110,6 +125,7 @@ class ClassicalPostProcessingResult:
             "residual_mismatches": self.residual_mismatches,
             "final_key_length": self.final_key_length,
             "final_key_digest": self.final_key_digest,
+            "verification_passed": self.verification_passed,
         }
 
 
@@ -169,13 +185,19 @@ def run_bb84_classical_postprocessing(
         candidate_bob,
         config.reconciliation_block_size,
     )
-    final_key_length, final_key_digest = _privacy_amplify(
-        corrected_bits=reconciled.corrected_alice_bits,
-        enabled=config.privacy_amplification_enabled,
-        estimated_qber=estimated_qber,
-        leak_ec=reconciled.leak_ec,
-        seed=seed,
-    )
+    verification_passed = reconciled.residual_mismatches == 0
+    if verification_passed:
+        final_key_length, final_key_digest = _privacy_amplify(
+            corrected_bits=reconciled.corrected_alice_bits,
+            enabled=config.privacy_amplification_enabled,
+            estimated_qber=estimated_qber,
+            leak_ec=reconciled.leak_ec,
+            seed=seed,
+        )
+    else:
+        # Residual mismatches mean Alice and Bob hold different strings, so a
+        # verification exchange would reject the key instead of publishing it.
+        final_key_length, final_key_digest = 0, None
     return ClassicalPostProcessingResult(
         sifted_key_length=len(keys.alice_bits),
         qber_sample_size=len(sample_indices),
@@ -190,6 +212,7 @@ def run_bb84_classical_postprocessing(
         residual_mismatches=reconciled.residual_mismatches,
         final_key_length=final_key_length,
         final_key_digest=final_key_digest,
+        verification_passed=verification_passed,
     )
 
 
@@ -255,7 +278,6 @@ def _reconcile_blocks(
         alice_block = alice_bits[start:end]
         bob_block = tuple(corrected_bob[start:end])
         leak_ec += 1
-        mismatches_before = _mismatch_count(alice_block, bob_block)
         if _parity(alice_block) != _parity(bob_block):
             relative_index, revealed_parities = _locate_single_error(
                 alice_block,
@@ -265,7 +287,7 @@ def _reconcile_blocks(
             corrected_bob[start + relative_index] ^= 1
             blocks_corrected += 1
         residual = _mismatch_count(alice_block, tuple(corrected_bob[start:end]))
-        if residual > 0 or (mismatches_before > 0 and residual == mismatches_before):
+        if residual > 0:
             ambiguous_blocks += 1
     corrected_bob_bits = tuple(corrected_bob)
     return _ReconciliationResult(
@@ -305,6 +327,8 @@ def _privacy_amplify(
 ) -> tuple[int, str | None]:
     if not enabled:
         return len(corrected_bits), None
+    if estimated_qber >= 0.5:
+        return 0, None
     final_length = max(
         0,
         int(len(corrected_bits) * (1.0 - binary_entropy(estimated_qber)) - leak_ec),

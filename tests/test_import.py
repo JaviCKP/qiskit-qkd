@@ -11,6 +11,17 @@ def test_package_exposes_version() -> None:
     assert qiskit_qkd.__version__ == "0.0.0"
 
 
+def test_package_exposes_non_fiber_channel_classes_lazily() -> None:
+    assert qiskit_qkd.SpaceChannel(distance_km=0.0).transmittance() == 1.0
+    assert qiskit_qkd.FreeSpaceChannel(distance_km=0.0).transmittance() == 1.0
+    assert qiskit_qkd.UnderwaterChannel(distance_km=0.0).transmittance() == 1.0
+
+
+def test_package_exposes_fiber_and_ideal_channel_classes_lazily() -> None:
+    assert qiskit_qkd.IdealChannel().transmittance() == 1.0
+    assert qiskit_qkd.FiberChannel(distance_km=10.0).transmittance() < 1.0
+
+
 def test_package_import_does_not_import_qiskit_runtime_modules() -> None:
     repo_src = Path(__file__).resolve().parents[1] / "src"
     env = os.environ.copy()

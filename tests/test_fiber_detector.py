@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from qiskit_qkd.analysis import sweep_bb84_distance
 from qiskit_qkd.channels import FiberChannel
 from qiskit_qkd.config import ChannelConfig, DetectorConfig, Scenario, SourceConfig
@@ -73,6 +75,7 @@ def fiber_scenario(
     fixed_loss_db: float = 0.0,
     efficiency: float = 1.0,
     dark_count_rate_hz: float = 0.0,
+    background_count_rate_hz: float = 0.0,
     emission_probability: float = 1.0,
     store_full_event_log: bool = False,
 ) -> Scenario:
@@ -86,6 +89,7 @@ def fiber_scenario(
             distance_km=distance_km,
             attenuation_db_km=0.2,
             fixed_loss_db=fixed_loss_db,
+            background_count_rate_hz=background_count_rate_hz,
         ),
         detector=DetectorConfig(
             kind="threshold",
@@ -163,6 +167,64 @@ def test_high_dark_counts_without_signal_create_random_bits() -> None:
     assert 0.45 <= ones / len(dark_bits) <= 0.55
 
 
+def test_optical_background_without_signal_is_distinct_from_dark_counts() -> None:
+    scenario = fiber_scenario(
+        pulses=2_000,
+        seed=21,
+        emission_probability=0.0,
+        dark_count_rate_hz=0.0,
+        background_count_rate_hz=20_000_000.0,
+        store_full_event_log=True,
+    )
+
+    result = BB84Protocol().run(scenario, backend=FailingBackend())
+    background_events = [
+        event for event in result.event_sample if event.detection_origin == "background"
+    ]
+
+    assert result.metrics.emitted == 0
+    assert result.metrics.transmitted == 0
+    assert result.metrics.detected >= 1_900
+    assert len(background_events) == result.metrics.detected
+    assert {event.detection_pattern for event in background_events} == {"background"}
+
+
+def test_threshold_detector_samples_background_clicks_separately() -> None:
+    detection = ThresholdDetector(
+        efficiency=0.0,
+        dark_count_rate_hz=0.0,
+        gate_width_s=1.0,
+    ).detect(
+        signal_present=False,
+        measured_bit=None,
+        rng=ScriptedRng(random_values=[1.0, 0.0], randrange_values=[1]),
+        background_count_rate_hz=1_000.0,
+    )
+
+    assert detection.detected is True
+    assert detection.bob_bit == 1
+    assert detection.detection_origin == "background"
+    assert detection.detection_pattern == "background"
+
+
+def test_threshold_detector_applies_efficiency_per_surviving_signal_photon() -> None:
+    detection = ThresholdDetector(
+        efficiency=0.3,
+        dark_count_rate_hz=0.0,
+        gate_width_s=1.0,
+    ).detect(
+        signal_present=True,
+        signal_photon_number=2,
+        measured_bit=1,
+        rng=ScriptedRng(random_values=[0.5]),
+    )
+
+    assert detection.detected is True
+    assert detection.bob_bit == 1
+    assert detection.detection_origin == "signal"
+    assert detection.detection_pattern == "signal"
+
+
 def test_threshold_detector_resolves_double_click_policies() -> None:
     discard = ThresholdDetector(
         efficiency=1.0,
@@ -203,6 +265,45 @@ def test_threshold_detector_resolves_double_click_policies() -> None:
     assert error.detected is True
     assert error.bob_bit == 0
     assert error.detection_pattern == "double_click_error"
+
+
+def test_discarded_double_click_still_triggers_dead_time() -> None:
+    detector = ThresholdDetector(
+        efficiency=1.0,
+        dark_count_rate_hz=1_000.0,
+        gate_width_s=1.0,
+        double_click_policy="discard",
+        dead_time_s=10.0,
+    )
+
+    first = detector.detect(
+        signal_present=True,
+        measured_bit=1,
+        rng=ScriptedRng(random_values=[0.0, 0.0]),
+        time_s=0.0,
+    )
+    second = detector.detect(
+        signal_present=True,
+        measured_bit=1,
+        rng=ScriptedRng(random_values=[0.0, 0.0]),
+        time_s=1.0,
+    )
+
+    assert first.detected is False
+    assert first.detection_pattern == "double_click_discard"
+    assert second.blocked_by_dead_time is True
+    assert second.detection_pattern == "dead_time"
+
+
+def test_detector_rejects_boolean_measured_bits() -> None:
+    detector = ThresholdDetector()
+
+    with pytest.raises((TypeError, ValueError)):
+        detector.detect(
+            signal_present=True,
+            measured_bit=True,
+            rng=ScriptedRng(random_values=[0.0]),
+        )
 
 
 def test_bb84_fiber_detects_less_at_longer_distance_with_same_seed() -> None:

@@ -10,6 +10,7 @@ from qiskit_qkd._validation import (
     require_bool,
     require_choice,
     require_finite_number,
+    require_non_negative_int,
     require_non_negative_number,
     require_positive_number,
     require_probability,
@@ -22,7 +23,7 @@ TIME_COMPARISON_TOLERANCE_S = 1e-15
 def _validate_optional_bit(name: str, value: int | None) -> int | None:
     if value is None:
         return None
-    if value not in {0, 1}:
+    if not isinstance(value, int) or isinstance(value, bool) or value not in {0, 1}:
         raise ValueError(f"{name} must be 0, 1, or None")
     return value
 
@@ -37,6 +38,7 @@ class DetectionResult:
     detection_pattern: str | None = None
     blocked_by_dead_time: bool = False
     afterpulse: bool = False
+    detector_fired: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -58,6 +60,11 @@ class DetectionResult:
             self,
             "afterpulse",
             require_bool("afterpulse", self.afterpulse),
+        )
+        object.__setattr__(
+            self,
+            "detector_fired",
+            require_bool("detector_fired", self.detector_fired),
         )
 
 
@@ -103,17 +110,40 @@ class ThresholdDetector:
     def dark_count_probability(self) -> float:
         return 1.0 - math.exp(-self.dark_count_rate_hz * self.gate_width_s)
 
+    def background_count_probability(self, background_count_rate_hz: float) -> float:
+        background_count_rate_hz = require_non_negative_number(
+            "background_count_rate_hz",
+            background_count_rate_hz,
+        )
+        return 1.0 - math.exp(-background_count_rate_hz * self.gate_width_s)
+
     def detect(
         self,
         *,
         signal_present: bool,
+        signal_photon_number: int | None = None,
         measured_bit: int | None,
         rng: random.Random,
         time_s: float | None = None,
+        background_count_rate_hz: float = 0.0,
     ) -> DetectionResult:
         """Resolve one detection gate using the shared simulation RNG."""
 
         measured_bit = _validate_optional_bit("measured_bit", measured_bit)
+        background_count_rate_hz = require_non_negative_number(
+            "background_count_rate_hz",
+            background_count_rate_hz,
+        )
+        if signal_photon_number is None:
+            signal_photon_number = 1 if signal_present else 0
+        signal_photon_number = require_non_negative_int(
+            "signal_photon_number",
+            signal_photon_number,
+        )
+        if signal_present and signal_photon_number == 0:
+            raise ValueError("signal_photon_number must be positive for a signal")
+        if not signal_present and signal_photon_number != 0:
+            raise ValueError("signal_photon_number must be zero without a signal")
         if signal_present and measured_bit is None:
             raise ValueError("measured_bit is required when signal_present is true")
         detection_time_s = 0.0 if time_s is None else require_finite_number(
@@ -130,20 +160,30 @@ class ThresholdDetector:
                 detection_origin="none",
                 detection_pattern="dead_time",
                 blocked_by_dead_time=True,
-            )
+        )
 
+        signal_click_probability = (
+            1.0 - (1.0 - self.efficiency) ** signal_photon_number
+        )
         signal_sample = rng.random()
-        signal_click = signal_present and signal_sample < self.efficiency
-        dark_click = rng.random() < self.dark_count_probability
+        signal_click = signal_present and signal_sample < signal_click_probability
+        dark_probability = self.dark_count_probability
+        dark_click = dark_probability > 0.0 and rng.random() < dark_probability
+        background_click = (
+            background_count_rate_hz > 0.0
+            and rng.random()
+            < self.background_count_probability(background_count_rate_hz)
+        )
         afterpulse_click = (
             not signal_click
             and not dark_click
+            and not background_click
             and self._has_prior_detection
             and self.afterpulse_probability > 0.0
             and rng.random() < self.afterpulse_probability
         )
 
-        if signal_click and dark_click:
+        if signal_click and (dark_click or background_click):
             return self._finalize(
                 self._resolve_double_click(measured_bit, rng),
                 detection_time_s,
@@ -155,6 +195,16 @@ class ThresholdDetector:
                     bob_bit=measured_bit,
                     detection_origin="signal",
                     detection_pattern="signal",
+                ),
+                detection_time_s,
+            )
+        if background_click:
+            return self._finalize(
+                DetectionResult(
+                    detected=True,
+                    bob_bit=rng.randrange(2),
+                    detection_origin="background",
+                    detection_pattern="background",
                 ),
                 detection_time_s,
             )
@@ -191,7 +241,7 @@ class ThresholdDetector:
         result: DetectionResult,
         detection_time_s: float,
     ) -> DetectionResult:
-        if result.detected:
+        if result.detected or result.detector_fired:
             self._has_prior_detection = True
             self._available_at_s = detection_time_s + self.dead_time_s
         return result
@@ -207,6 +257,7 @@ class ThresholdDetector:
                 bob_bit=None,
                 detection_origin="none",
                 detection_pattern="double_click_discard",
+                detector_fired=True,
             )
         if self.double_click_policy == "random":
             return DetectionResult(

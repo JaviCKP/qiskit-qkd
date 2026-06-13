@@ -340,11 +340,15 @@ Interpretation:
 
 This report also clarifies the limits of the current implementation:
 
-- Fiber currently models attenuation only, not polarization drift,
-  misalignment, phase noise, chromatic dispersion, PMD, Raman background, or
-  basis-dependent loss.
-- The source is still an ideal single-photon source in this validation. It does
-  not yet model weak coherent pulses, Poisson photon number, or decoy states.
+- This Phase 3.5 report validated the attenuation-only fiber model available
+  at that point. Later phases add coherent misalignment, Aer phase/state noise,
+  PMD, chromatic dispersion, Raman background, and polarization-dependent loss;
+  those newer effects are covered by their own tests and documentation rather
+  than by the curves in this historical report.
+- This Phase 3.5 validation report uses the ideal single-photon source
+  baseline. Phase 6 adds weak-coherent Poisson photon-number sampling and
+  decoy-state statistics, but those newer diagnostics are not validated by the
+  curves in this report.
 - The secret-key-rate formula is still a simplified pedagogical estimate. It
   is not a finite-key decoy-state security analysis.
 - Detector modeling is single-threshold and event-level. It is not yet a
