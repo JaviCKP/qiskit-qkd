@@ -321,18 +321,18 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 2 — API completa
 
-- [ ] `catalog.py` (parámetros + métricas, según la sección Catálogo).
-- [ ] `errors.py`: handler que convierte excepciones de la librería en 422 con
+- [x] `catalog.py` (parámetros + métricas, según la sección Catálogo).
+- [x] `errors.py`: handler que convierte excepciones de la librería en 422 con
       `loc` (path del campo cuando sea inferible).
-- [ ] `jobs.py`: ProcessPoolExecutor (spawn-safe), estados
+- [x] `jobs.py`: ProcessPoolExecutor (spawn-safe), estados
       queued/running/done/error/cancelled, progreso por puntos en sweeps,
       cancelación, límite de 1 job concurrente pesado.
-- [ ] Rutas: scenarios/validate, runs, sweeps (1D + series + temporal vía
+- [x] Rutas: scenarios/validate, runs, sweeps (1D + series + temporal vía
       `sweep_bb84_time`), characterize (4 endpoints), dynamics/preview,
       experiments CRUD (+ import/export y `CurveRecipe`), presets (4 escenarios:
       "Fibra metropolitana", "Satélite LEO", "PNS sobre decoy débil",
       "E91 con scintillation").
-- [ ] Tests httpx: validación con error de campo, run BB84 pequeño end-to-end,
+- [x] Tests httpx: validación con error de campo, run BB84 pequeño end-to-end,
       sweep 3 puntos con repeats, characterize de las 4 secciones, CRUD.
 - **Hecho cuando:** `pytest tests/panel_api -q` verde y `/docs` (OpenAPI)
   refleja todos los contratos.
