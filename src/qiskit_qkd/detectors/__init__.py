@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from qiskit_qkd.config import DetectorConfig
 
+from .characterization import DetectorState, detector_state_from_scenario
 from .threshold import DetectionResult, ThresholdDetector
 
-__all__ = ["DetectionResult", "ThresholdDetector", "detector_from_config"]
+__all__ = [
+    "DetectionResult",
+    "DetectorState",
+    "ThresholdDetector",
+    "detector_from_config",
+    "detector_state_from_scenario",
+]
 
 
 def detector_from_config(config: DetectorConfig) -> ThresholdDetector:

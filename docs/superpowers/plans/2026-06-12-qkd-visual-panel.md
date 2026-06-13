@@ -286,35 +286,35 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 0 — Viabilidad y esqueleto
 
-- [ ] Verificar deps backend en el venv del proyecto (Python 3.14):
+- [x] Verificar deps backend en el venv del proyecto (Python 3.14):
       `..\.venv\Scripts\python.exe -m pip install fastapi "uvicorn[standard]" "pydantic>=2" httpx`.
       Plan B si pydantic no tiene wheels para 3.14: crear `panel/.venv-api` con
       Python 3.12 solo para la API (la librería soporta ≥3.12).
-- [ ] Verificar Node ≥ 20 (`node --version`); si falta:
+- [x] Verificar Node ≥ 20 (`node --version`); si falta:
       `winget install OpenJS.NodeJS.LTS`.
-- [ ] Scaffolding `panel/web` con Vite (react-ts), Tailwind, shadcn/ui,
+- [x] Scaffolding `panel/web` con Vite (react-ts), Tailwind, shadcn/ui,
       TanStack Query, react-plotly.js, lucide-react, KaTeX.
-- [ ] `panel/api/app.py` con FastAPI hello + CORS para el puerto de Vite +
+- [x] `panel/api/app.py` con FastAPI hello + CORS para el puerto de Vite +
       proxy `/api` en `vite.config.ts`.
-- [ ] `pyproject.toml`: extra `panel = ["fastapi", "uvicorn[standard]", "httpx"]`;
+- [x] `pyproject.toml`: extra `panel = ["fastapi", "uvicorn[standard]", "httpx"]`;
       `.gitignore`: `panel/store/`, `panel/web/node_modules/`, `panel/web/dist/`.
-- [ ] `panel/README.md`: arranque en 2 comandos (uvicorn --reload + npm run dev).
+- [x] `panel/README.md`: arranque en 2 comandos (uvicorn --reload + npm run dev).
 - **Hecho cuando:** ambos servidores arrancan y la web muestra "API ok" leyendo
   un endpoint real.
 
 ### Fase 1 — Adiciones a la librería (sin UI, con tests)
 
-- [ ] `SourceState` + `source_state_from_scenario()` (patrón `ChannelState`,
+- [x] `SourceState` + `source_state_from_scenario()` (patrón `ChannelState`,
       resolver-aware) con las probabilidades Poisson analíticas por intensidad.
-- [ ] `DetectorState` + `detector_state_from_scenario()`.
-- [ ] `TimingState` + `timing_state_from_scenario()` (in-gate analítico con
+- [x] `DetectorState` + `detector_state_from_scenario()`.
+- [x] `TimingState` + `timing_state_from_scenario()` (in-gate analítico con
       `math.erf`, walk-off por drift).
-- [ ] `SWEEPABLE_TARGETS` en la librería (targets de dynamics + `scenario.pulses`,
+- [x] `SWEEPABLE_TARGETS` en la librería (targets de dynamics + `scenario.pulses`,
       `scenario.clock_rate_hz`) y
       `analysis.sweep_scenario_parameter(protocol, scenario, target, values, *,
       repeats, backend_factory)` genérico que devuelve metric rows (reutiliza
       `metric_rows_from_results`/`summarize_metric_rows`).
-- [ ] Tests pytest de todo lo anterior (mismo rigor que el resto del repo);
+- [x] Tests pytest de todo lo anterior (mismo rigor que el resto del repo);
       exportar en `__init__` correspondientes.
 - **Hecho cuando:** `pytest -q` verde y los nuevos helpers devuelven filas
   JSON-safe documentadas.

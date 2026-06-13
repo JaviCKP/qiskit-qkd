@@ -9,3 +9,6 @@ build/
 dist/
 scratch/
 examples/figures/
+panel/store/
+panel/web/node_modules/
+panel/web/dist/

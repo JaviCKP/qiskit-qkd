@@ -10,7 +10,7 @@ from qiskit_qkd._json import JSONObject
 from qiskit_qkd._validation import reject_unknown_fields, require_non_empty_str
 from qiskit_qkd.temporal.profiles import TimeProfile, profile_from_dict
 
-_ALLOWED_TARGETS: dict[str, set[str]] = {
+_DYNAMIC_TARGETS: dict[str, set[str]] = {
     "source": {
         "emission_probability",
         "mean_photon_number",
@@ -68,6 +68,12 @@ _ALLOWED_TARGETS: dict[str, set[str]] = {
     },
 }
 
+SWEEPABLE_TARGETS = frozenset(
+    target
+    for section, fields in _DYNAMIC_TARGETS.items()
+    for target in (f"{section}.{field}" for field in fields)
+) | frozenset({"scenario.pulses", "scenario.clock_rate_hz"})
+
 
 def validate_parameter_target(target: str) -> str:
     """Validate a public ``section.field`` dynamic-parameter target."""
@@ -77,8 +83,7 @@ def validate_parameter_target(target: str) -> str:
     if len(parts) != 2:
         raise ValueError("target must use 'section.field' syntax")
     section, field = parts
-    allowed_fields = _ALLOWED_TARGETS.get(section)
-    if allowed_fields is None or field not in allowed_fields:
+    if normalized not in SWEEPABLE_TARGETS:
         raise ValueError(f"Unsupported dynamic parameter target: {normalized!r}")
     return normalized
 

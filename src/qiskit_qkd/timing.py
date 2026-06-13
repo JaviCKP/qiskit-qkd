@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
-from qiskit_qkd._validation import require_positive_int, require_positive_number
-from qiskit_qkd.config import TimingConfig
+from qiskit_qkd._json import JSONObject
+from qiskit_qkd._validation import (
+    require_non_negative_number,
+    require_positive_int,
+    require_positive_number,
+)
+from qiskit_qkd.channels.impairments import effective_jitter_std_s
+from qiskit_qkd.config import Scenario, TimingConfig
+from qiskit_qkd.temporal import ParameterResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +29,62 @@ class TimingOutcome:
     bob_gate_end_s: float
     signal_assigned_slot: int | None
     timing_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class TimingState:
+    """Analytical timing-gate state for one effective scenario."""
+
+    time_s: float
+    propagation_delay_s: float
+    jitter_std_s: float
+    effective_jitter_std_s: float
+    gate_width_s: float
+    in_gate_probability: float
+    first_walkoff_slot: int | None
+    clock_offset_s: float
+    clock_drift_ppm: float
+
+    def to_dict(self) -> JSONObject:
+        return {
+            "time_s": self.time_s,
+            "propagation_delay_s": self.propagation_delay_s,
+            "jitter_std_s": self.jitter_std_s,
+            "effective_jitter_std_s": self.effective_jitter_std_s,
+            "gate_width_s": self.gate_width_s,
+            "in_gate_probability": self.in_gate_probability,
+            "first_walkoff_slot": self.first_walkoff_slot,
+            "clock_offset_s": self.clock_offset_s,
+            "clock_drift_ppm": self.clock_drift_ppm,
+        }
+
+
+def timing_state_from_scenario(
+    scenario: Scenario,
+    *,
+    time_s: float = 0.0,
+    resolver: ParameterResolver | None = None,
+) -> TimingState:
+    """Return the analytical timing state at ``time_s``."""
+
+    time = require_non_negative_number("time_s", time_s)
+    active_resolver = resolver or ParameterResolver()
+    effective = active_resolver.scenario_at(scenario, time_s=time)
+    jitter = effective_jitter_std_s(effective)
+    return TimingState(
+        time_s=time,
+        propagation_delay_s=effective.timing.propagation_delay_s,
+        jitter_std_s=effective.timing.jitter_std_s,
+        effective_jitter_std_s=jitter,
+        gate_width_s=effective.detector.gate_width_s,
+        in_gate_probability=_in_gate_probability(
+            effective.detector.gate_width_s,
+            jitter,
+        ),
+        first_walkoff_slot=_first_walkoff_slot(effective),
+        clock_offset_s=effective.timing.clock_offset_s,
+        clock_drift_ppm=effective.timing.clock_drift_ppm,
+    )
 
 
 def assign_timing(
@@ -161,3 +225,27 @@ def nearest_bob_slot(
     if 0 <= nearest < pulses:
         return nearest
     return None
+
+
+def _in_gate_probability(gate_width_s: float, jitter_std_s: float) -> float:
+    if jitter_std_s == 0.0:
+        return 1.0
+    return math.erf(gate_width_s / (2.0 * math.sqrt(2.0) * jitter_std_s))
+
+
+def _first_walkoff_slot(scenario: Scenario) -> int | None:
+    half_gate_s = scenario.detector.gate_width_s / 2.0
+    offset_s = scenario.timing.clock_offset_s
+    if abs(offset_s) > half_gate_s:
+        return 0
+    drift_per_slot_s = (
+        (1.0 / scenario.clock_rate_hz) * scenario.timing.clock_drift_ppm * 1e-6
+    )
+    if drift_per_slot_s == 0.0:
+        return None
+    if drift_per_slot_s > 0.0:
+        threshold = (half_gate_s - offset_s) / drift_per_slot_s
+    else:
+        threshold = (-half_gate_s - offset_s) / drift_per_slot_s
+    slot = max(0, math.floor(threshold) + 1)
+    return slot if slot < scenario.pulses else None

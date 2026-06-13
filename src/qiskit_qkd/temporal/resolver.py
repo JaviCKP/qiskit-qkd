@@ -60,6 +60,9 @@ class ParameterResolver:
 
         effective = scenario
         for section, section_updates in updates.items():
+            if section == "scenario":
+                effective = replace(effective, **section_updates)
+                continue
             section_config = getattr(effective, section)
             effective = replace(
                 effective,
@@ -90,6 +93,8 @@ def get_parameter_value(scenario: Scenario, target: str) -> Any:
 
     normalized = validate_parameter_target(target)
     section, field = normalized.split(".")
+    if section == "scenario":
+        return getattr(scenario, field)
     return getattr(getattr(scenario, section), field)
 
 
