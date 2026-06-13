@@ -1,32 +1,50 @@
 import {
   QueryClient,
   QueryClientProvider,
+  useMutation,
   useQueries,
   useQuery,
 } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import type { ComponentType } from 'react'
+import type { ChangeEvent, ComponentType } from 'react'
 import type { PlotParams } from 'react-plotly.js'
 import {
   Activity,
   CheckCircle2,
+  Copy,
+  Download,
   FlaskConical,
   Gauge,
   Library,
   Plus,
+  Play,
   RadioTower,
+  Save,
+  Square,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import Plotly from 'plotly.js-dist-min'
 import createPlotlyComponentModule from 'react-plotly.js/factory'
 
 import {
   ApiError,
+  cancelRun,
   characterize,
+  createExperiment,
+  createRun,
+  deleteExperiment,
+  exportExperiment,
+  fetchRunResult,
+  fetchRunStatus,
   fetchCatalog,
+  importExperiment,
   type ApiValidationIssue,
   type CatalogField,
   type CatalogSection,
+  type Experiment,
+  type JobStatus,
+  listExperiments,
   validateScenario,
   previewDynamics,
 } from './api/client'
@@ -48,9 +66,19 @@ function resolveDefaultExport<T>(module: T | { default: T }): T {
   return module as T
 }
 
+type ActiveView = 'library' | 'designer' | 'results' | 'curves'
+
+type RunSnapshot = {
+  digest: string
+  status: JobStatus
+  result: Record<string, unknown>
+}
+
 function PanelShell() {
   const scenario = useDesignerStore((state) => state.scenario)
+  const loadScenario = useDesignerStore((state) => state.loadScenario)
   const updateField = useDesignerStore((state) => state.updateField)
+  const [activeView, setActiveView] = useState<ActiveView>('designer')
   const debouncedScenario = useDebouncedValue(scenario, 250)
   const health = useQuery({
     queryKey: ['health'],
@@ -88,6 +116,28 @@ function PanelShell() {
   const detectorState = states[2].data?.state ?? {}
   const timingState = states[3].data?.state ?? {}
   const digest = validation.data?.digest.slice(0, 8)
+  const navItems = [
+    { id: 'library' as const, label: 'Biblioteca', Icon: Library },
+    { id: 'designer' as const, label: 'Diseñador', Icon: FlaskConical },
+    { id: 'results' as const, label: 'Ejecución', Icon: Activity },
+    { id: 'curves' as const, label: 'Curvas', Icon: Gauge },
+  ]
+  const title =
+    activeView === 'library'
+      ? 'Biblioteca'
+      : activeView === 'results'
+        ? 'Ejecución y resultados'
+        : activeView === 'curves'
+          ? 'Curvas'
+          : 'Diseñador'
+  const subtitle =
+    activeView === 'library'
+      ? 'experimentos persistentes JSON'
+      : activeView === 'results'
+        ? 'jobs, métricas, eventos y guardado'
+        : activeView === 'curves'
+          ? 'recetas de barrido pendientes'
+          : 'BB84 decoy, fibra y dinámica temporal'
 
   return (
     <main className="min-h-screen bg-background text-slate-100">
@@ -103,31 +153,26 @@ function PanelShell() {
             </div>
           </div>
           <nav className="grid gap-1 text-sm text-slate-300 sm:grid-cols-4 lg:block lg:space-y-1">
-            {[
-              ['Biblioteca', Library],
-              ['Diseñador', FlaskConical],
-              ['Caracterización', Activity],
-              ['Curvas', Gauge],
-            ].map(([label, Icon]) => (
-              <div
-                className="flex items-center gap-3 rounded px-3 py-2 hover:bg-white/5"
-                key={label as string}
+            {navItems.map(({ id, label, Icon }) => (
+              <button
+                className={`flex items-center gap-3 rounded px-3 py-2 text-left hover:bg-white/5 ${
+                  activeView === id ? 'bg-white/5 text-cyan' : ''
+                }`}
+                key={id}
+                onClick={() => setActiveView(id)}
+                type="button"
               >
                 <Icon size={16} aria-hidden="true" />
-                <span>{label as string}</span>
-              </div>
+                <span>{label}</span>
+              </button>
             ))}
           </nav>
         </aside>
         <section className="min-w-0 px-4 py-4 sm:px-6 sm:py-5">
           <header className="mb-6 flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-normal text-white">
-                Diseñador
-              </h1>
-              <p className="mt-1 text-sm text-slate-400">
-                BB84 decoy, fibra y dinámica temporal
-              </p>
+              <h1 className="text-2xl font-semibold tracking-normal text-white">{title}</h1>
+              <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <StatusPill label={statusText} detail={health.data?.service ?? '/api/health'} />
@@ -146,32 +191,50 @@ function PanelShell() {
               />
             </div>
           </header>
-          {validationIssues.length > 0 ? <ValidationSummary issues={validationIssues} /> : null}
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-5">
-              <SchemaForm
-                errors={validationIssues}
-                sections={catalogSections}
-                scenario={scenario}
-                onChange={updateField}
-              />
-              <DynamicsPanel
-                onChange={updateField}
-                rows={dynamics.data?.rows ?? []}
-                scenario={scenario}
-                sweepableFields={sweepableFields}
-              />
-            </div>
-            <aside className="space-y-4">
-              <LiveBudget
-                channelState={channelState}
-                sourceState={sourceState}
-                detectorState={detectorState}
-                timingState={timingState}
-              />
-              <MetricList metrics={catalog.data?.metrics ?? []} />
-            </aside>
-          </div>
+          {activeView === 'designer' ? (
+            <>
+              {validationIssues.length > 0 ? (
+                <ValidationSummary issues={validationIssues} />
+              ) : null}
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-5">
+                  <SchemaForm
+                    errors={validationIssues}
+                    sections={catalogSections}
+                    scenario={scenario}
+                    onChange={updateField}
+                  />
+                  <DynamicsPanel
+                    onChange={updateField}
+                    rows={dynamics.data?.rows ?? []}
+                    scenario={scenario}
+                    sweepableFields={sweepableFields}
+                  />
+                </div>
+                <aside className="space-y-4">
+                  <LiveBudget
+                    channelState={channelState}
+                    sourceState={sourceState}
+                    detectorState={detectorState}
+                    timingState={timingState}
+                  />
+                  <MetricList metrics={catalog.data?.metrics ?? []} />
+                </aside>
+              </div>
+            </>
+          ) : activeView === 'library' ? (
+            <LibraryView
+              currentScenario={scenario}
+              onLoad={(nextScenario) => {
+                loadScenario(nextScenario)
+                setActiveView('designer')
+              }}
+            />
+          ) : activeView === 'results' ? (
+            <ExecutionView scenario={scenario} />
+          ) : (
+            <PlaceholderView />
+          )}
         </section>
       </div>
     </main>
@@ -211,6 +274,313 @@ function ValidationSummary({ issues }: { issues: ApiValidationIssue[] }) {
           </span>
         ))}
       </div>
+    </section>
+  )
+}
+
+function ExecutionView({ scenario }: { scenario: Record<string, unknown> }) {
+  const [label, setLabel] = useState('run local')
+  const [saveName, setSaveName] = useState('Experimento dashboard')
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null)
+  const [runs, setRuns] = useState<RunSnapshot[]>([])
+  const latestRun = runs.at(-1) ?? null
+  const previousRun = runs.length > 1 ? runs.at(-2) ?? null : null
+  const runMutation = useMutation({
+    mutationFn: async (): Promise<RunSnapshot> => {
+      const created = await createRun(scenario, label)
+      setActiveJobId(created.job_id)
+      let status = await fetchRunStatus(created.job_id)
+      setJobStatus(status)
+      while (status.status === 'queued' || status.status === 'running') {
+        await delay(500)
+        status = await fetchRunStatus(created.job_id)
+        setJobStatus(status)
+      }
+      if (status.status !== 'done') {
+        throw new Error(status.error ?? `job ${status.status}`)
+      }
+      const result = await fetchRunResult(created.job_id)
+      return { digest: created.digest, status, result }
+    },
+    onSuccess: (snapshot) => {
+      setRuns((current) => [...current, snapshot])
+      setSaveName(label || `Experimento ${snapshot.digest.slice(0, 8)}`)
+      setActiveJobId(null)
+    },
+    onError: () => setActiveJobId(null),
+  })
+  const cancelMutation = useMutation({
+    mutationFn: async () => (activeJobId ? cancelRun(activeJobId) : { cancelled: false }),
+    onSuccess: () => {
+      setJobStatus((current) => (current ? { ...current, status: 'cancelled' } : current))
+      setActiveJobId(null)
+    },
+  })
+  const saveMutation = useMutation({
+    mutationFn: async () =>
+      createExperiment({
+        name: saveName,
+        scenario,
+        tags: ['dashboard'],
+        last_result: latestRun?.result ?? null,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+  const progress = jobStatus?.progress
+  const progressPercent = progress && progress.total > 0 ? (100 * progress.done) / progress.total : 0
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_auto]">
+          <label className="block">
+            <span className="text-xs text-slate-500">label</span>
+            <input
+              className="mt-1 h-9 w-full rounded border border-border bg-background px-3 text-sm text-white outline-none focus:border-cyan"
+              onChange={(event) => setLabel(event.target.value)}
+              value={label}
+            />
+          </label>
+          <button
+            className="mt-5 flex h-9 items-center justify-center gap-2 rounded border border-cyan px-3 text-sm text-cyan hover:bg-cyan/10 disabled:opacity-50"
+            disabled={runMutation.isPending}
+            onClick={() => runMutation.mutate()}
+            type="button"
+          >
+            <Play size={15} aria-hidden="true" />
+            Ejecutar
+          </button>
+          <button
+            className="mt-5 flex h-9 items-center justify-center gap-2 rounded border border-border px-3 text-sm text-slate-300 hover:border-warning hover:text-warning disabled:opacity-50"
+            disabled={!activeJobId || cancelMutation.isPending}
+            onClick={() => cancelMutation.mutate()}
+            type="button"
+          >
+            <Square size={15} aria-hidden="true" />
+            Cancelar
+          </button>
+        </div>
+        {jobStatus ? (
+          <div className="mt-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-mono text-slate-300">{jobStatus.job_id}</span>
+              <span className="text-slate-500">
+                {jobStatus.status} · {jobStatus.elapsed_s.toFixed(2)} s
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded bg-background">
+              <div className="h-full bg-cyan" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+        ) : null}
+        {runMutation.error ? (
+          <p className="mt-3 text-sm text-danger">{runMutation.error.message}</p>
+        ) : null}
+      </section>
+      {latestRun ? (
+        <>
+          <section className="rounded border border-border bg-surface p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <label className="block flex-1">
+                <span className="text-xs text-slate-500">guardar como</span>
+                <input
+                  className="mt-1 h-9 w-full rounded border border-border bg-background px-3 text-sm text-white outline-none focus:border-cyan"
+                  onChange={(event) => setSaveName(event.target.value)}
+                  value={saveName}
+                />
+              </label>
+              <button
+                className="flex h-9 items-center justify-center gap-2 rounded border border-success px-3 text-sm text-success hover:bg-success/10 disabled:opacity-50"
+                disabled={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+                type="button"
+              >
+                <Save size={15} aria-hidden="true" />
+                Guardar
+              </button>
+            </div>
+            {saveMutation.data ? (
+              <p className="mt-2 font-mono text-xs text-success">
+                guardado {saveMutation.data.experiment.id}
+              </p>
+            ) : null}
+          </section>
+          <ResultDetails latestRun={latestRun} previousRun={previousRun} />
+        </>
+      ) : (
+        <section className="rounded border border-border bg-surface p-4 text-sm text-slate-400">
+          Ejecuta el escenario actual para ver métricas, eventos y provenance.
+        </section>
+      )}
+    </div>
+  )
+}
+
+function ResultDetails({
+  latestRun,
+  previousRun,
+}: {
+  latestRun: RunSnapshot
+  previousRun: RunSnapshot | null
+}) {
+  const [activeTab, setActiveTab] = useState('summary')
+  const summary = latestRun.status.result_summary ?? {}
+  const previousSummary = previousRun?.status.result_summary ?? null
+  const tabs = resultTabs(latestRun.result, summary)
+  const selectedTab = tabs.includes(activeTab) ? activeTab : tabs[0]
+
+  return (
+    <section className="rounded border border-border bg-surface p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-white">Resultado</h2>
+          <p className="font-mono text-xs text-slate-500">{latestRun.digest.slice(0, 12)}</p>
+        </div>
+        <StatusBadge summary={summary} />
+      </div>
+      <ResultMetricGrid current={summary} previous={previousSummary} />
+      <div className="mt-5 flex flex-wrap gap-2 border-b border-border pb-3">
+        {tabs.map((tab) => (
+          <button
+            className={`rounded px-3 py-1 text-sm ${
+              selectedTab === tab ? 'bg-cyan/10 text-cyan' : 'text-slate-400 hover:text-white'
+            }`}
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            type="button"
+          >
+            {tabLabel(tab)}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4">{renderResultTab(selectedTab, latestRun.result, summary)}</div>
+    </section>
+  )
+}
+
+function LibraryView({
+  currentScenario,
+  onLoad,
+}: {
+  currentScenario: Record<string, unknown>
+  onLoad: (scenario: Record<string, unknown>) => void
+}) {
+  const [name, setName] = useState('Experimento dashboard')
+  const experiments = useQuery({ queryKey: ['experiments'], queryFn: listExperiments })
+  const saveCurrent = useMutation({
+    mutationFn: async () =>
+      createExperiment({ name, scenario: currentScenario, tags: ['dashboard'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+  const duplicate = useMutation({
+    mutationFn: async (experiment: Experiment) =>
+      createExperiment({
+        name: `${experiment.name} copia`,
+        scenario: experiment.scenario,
+        tags: experiment.tags ?? [],
+        last_result: experiment.last_result ?? null,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+  const remove = useMutation({
+    mutationFn: deleteExperiment,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+  const importer = useMutation({
+    mutationFn: importExperiment,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['experiments'] }),
+  })
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded border border-border bg-surface p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+          <label className="block">
+            <span className="text-xs text-slate-500">nombre</span>
+            <input
+              className="mt-1 h-9 w-full rounded border border-border bg-background px-3 text-sm text-white outline-none focus:border-cyan"
+              onChange={(event) => setName(event.target.value)}
+              value={name}
+            />
+          </label>
+          <button
+            className="mt-5 flex h-9 items-center justify-center gap-2 rounded border border-success px-3 text-sm text-success hover:bg-success/10"
+            onClick={() => saveCurrent.mutate()}
+            type="button"
+          >
+            <Save size={15} aria-hidden="true" />
+            Guardar actual
+          </button>
+          <label className="mt-5 flex h-9 cursor-pointer items-center justify-center gap-2 rounded border border-border px-3 text-sm text-slate-300 hover:border-cyan hover:text-cyan">
+            <Upload size={15} aria-hidden="true" />
+            Importar
+            <input
+              className="hidden"
+              onChange={(event) => void importFromFile(event, importer.mutate)}
+              type="file"
+              accept="application/json"
+            />
+          </label>
+        </div>
+      </section>
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {(experiments.data?.experiments ?? []).map((experiment) => (
+          <article className="rounded border border-border bg-surface p-4" key={experiment.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">{experiment.name}</h2>
+                <p className="mt-1 font-mono text-xs text-slate-500">
+                  {experiment.digest.slice(0, 12)}
+                </p>
+              </div>
+              <StatusBadge summary={experiment.last_result ?? {}} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className="flex h-8 items-center gap-2 rounded border border-cyan px-2 text-xs text-cyan hover:bg-cyan/10"
+                onClick={() => onLoad(experiment.scenario)}
+                type="button"
+              >
+                <FlaskConical size={14} aria-hidden="true" />
+                Cargar
+              </button>
+              <button
+                className="flex h-8 items-center gap-2 rounded border border-border px-2 text-xs text-slate-300 hover:text-white"
+                onClick={() => duplicate.mutate(experiment)}
+                type="button"
+              >
+                <Copy size={14} aria-hidden="true" />
+                Duplicar
+              </button>
+              <button
+                className="flex h-8 items-center gap-2 rounded border border-border px-2 text-xs text-slate-300 hover:text-white"
+                onClick={() => void exportToFile(experiment)}
+                type="button"
+              >
+                <Download size={14} aria-hidden="true" />
+                Exportar
+              </button>
+              <button
+                className="flex h-8 items-center gap-2 rounded border border-border px-2 text-xs text-slate-300 hover:border-danger hover:text-danger"
+                onClick={() => remove.mutate(experiment.id)}
+                type="button"
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Borrar
+              </button>
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  )
+}
+
+function PlaceholderView() {
+  return (
+    <section className="rounded border border-border bg-surface p-4 text-sm text-slate-400">
+      La vista de curvas queda para la Fase 5; el selector ya está reservado.
     </section>
   )
 }
@@ -764,6 +1134,196 @@ function MetricList({
       </div>
     </section>
   )
+}
+
+function ResultMetricGrid({
+  current,
+  previous,
+}: {
+  current: Record<string, unknown>
+  previous: Record<string, unknown> | null
+}) {
+  const currentMetrics = metricRecord(current)
+  const previousMetrics = previous ? metricRecord(previous) : {}
+  const keys = ['qber', 'secret_key_rate_bps', 'gain', 'sifted', 'chsh_s']
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {keys.map((key) => (
+        <ResultMetricCard
+          key={key}
+          label={key}
+          value={currentMetrics[key]}
+          previous={previousMetrics[key]}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ResultMetricCard({
+  label,
+  value,
+  previous,
+}: {
+  label: string
+  value: unknown
+  previous: unknown
+}) {
+  const delta =
+    typeof value === 'number' && typeof previous === 'number' ? value - previous : null
+  return (
+    <article className="rounded border border-border bg-background/60 p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-2 font-mono text-lg text-white">{formatNumber(value)}</p>
+      {delta !== null ? (
+        <p className={delta >= 0 ? 'text-xs text-success' : 'text-xs text-danger'}>
+          Δ {formatNumber(delta)}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-600">sin delta</p>
+      )}
+    </article>
+  )
+}
+
+function StatusBadge({ summary }: { summary: Record<string, unknown> }) {
+  const metrics = metricRecord(summary)
+  const classical = isRecord(summary.classical) ? summary.classical : {}
+  const verification = classical.verification_passed
+  const abort = metrics.abort === true
+  const secure = metrics.secure === true || metrics.abort === false
+  const label =
+    verification === false ? 'VERIFICACIÓN FALLIDA' : abort ? 'ABORT' : secure ? 'SEGURO' : 'RESULTADO'
+  const tone =
+    verification === false || abort
+      ? 'border-danger text-danger'
+      : secure
+        ? 'border-success text-success'
+        : 'border-border text-slate-300'
+  return <span className={`rounded border px-2 py-1 text-xs ${tone}`}>{label}</span>
+}
+
+function resultTabs(result: Record<string, unknown>, summary: Record<string, unknown>): string[] {
+  const tabs = ['summary']
+  if (isRecord(result.decoy) || isRecord(summary.decoy_security)) {
+    tabs.push('decoy')
+  }
+  if (isRecord(result.bell) || isRecord(result.correlations) || isRecord(summary.bell)) {
+    tabs.push('bell')
+  }
+  if (Array.isArray(result.event_sample)) {
+    tabs.push('events')
+  }
+  if (isRecord(result.classical) || isRecord(summary.classical)) {
+    tabs.push('classical')
+  }
+  tabs.push('provenance')
+  return tabs
+}
+
+function tabLabel(tab: string): string {
+  const labels: Record<string, string> = {
+    summary: 'Resumen',
+    decoy: 'Decoy',
+    bell: 'Bell',
+    events: 'Eventos',
+    classical: 'Clásico',
+    provenance: 'Provenance',
+  }
+  return labels[tab] ?? tab
+}
+
+function renderResultTab(
+  tab: string,
+  result: Record<string, unknown>,
+  summary: Record<string, unknown>,
+) {
+  if (tab === 'events' && Array.isArray(result.event_sample)) {
+    return <EventHistogram events={result.event_sample} />
+  }
+  if (tab === 'decoy') {
+    return <JsonBlock value={result.decoy ?? summary.decoy_security ?? {}} />
+  }
+  if (tab === 'bell') {
+    return <JsonBlock value={result.bell ?? result.correlations ?? summary.bell ?? {}} />
+  }
+  if (tab === 'classical') {
+    return <JsonBlock value={result.classical ?? summary.classical ?? {}} />
+  }
+  if (tab === 'provenance') {
+    return <JsonBlock value={result.provenance ?? { digest: summary.digest }} />
+  }
+  return <JsonBlock value={summary} />
+}
+
+function EventHistogram({ events }: { events: unknown[] }) {
+  const counts = events.reduce<Record<string, number>>((accumulator, event) => {
+    const status = isRecord(event) ? String(event.timing_status ?? 'ok') : 'unknown'
+    accumulator[status] = (accumulator[status] ?? 0) + 1
+    return accumulator
+  }, {})
+  const maxCount = Math.max(1, ...Object.values(counts))
+  return (
+    <div className="space-y-2">
+      {Object.entries(counts).map(([status, count]) => (
+        <div className="grid grid-cols-[120px_1fr_48px] items-center gap-3" key={status}>
+          <span className="font-mono text-xs text-slate-400">{status}</span>
+          <div className="h-3 overflow-hidden rounded bg-background">
+            <div className="h-full bg-cyan" style={{ width: `${(100 * count) / maxCount}%` }} />
+          </div>
+          <span className="text-right font-mono text-xs text-slate-400">{count}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function JsonBlock({ value }: { value: unknown }) {
+  return (
+    <pre className="max-h-96 overflow-auto rounded border border-border bg-background p-3 text-xs text-slate-300">
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  )
+}
+
+function metricRecord(summary: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(summary.metrics) ? summary.metrics : summary
+}
+
+async function exportToFile(experiment: Experiment): Promise<void> {
+  const payload = await exportExperiment(experiment.id)
+  downloadJson(`${safeFileName(experiment.name)}.json`, payload.experiment)
+}
+
+async function importFromFile(
+  event: ChangeEvent<HTMLInputElement>,
+  onImport: (payload: Record<string, unknown>) => void,
+): Promise<void> {
+  const file = event.target.files?.[0]
+  if (!file) {
+    return
+  }
+  const payload = JSON.parse(await file.text()) as Record<string, unknown>
+  onImport(isRecord(payload.experiment) ? payload.experiment : payload)
+  event.target.value = ''
+}
+
+function downloadJson(fileName: string, value: unknown): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'experiment'
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function readTarget(scenario: Record<string, unknown>, target: string): unknown {

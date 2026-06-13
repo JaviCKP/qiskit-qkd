@@ -354,12 +354,12 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 4 — Web: Ejecución y Resultados
 
-- [ ] Lanzar runs, polling de jobs, barra de progreso y cancelar.
-- [ ] MetricCards con delta vs run anterior + StatusBadge
+- [x] Lanzar runs, polling de jobs, barra de progreso y cancelar.
+- [x] MetricCards con delta vs run anterior + StatusBadge
       (incluye VERIFICACIÓN FALLIDA con `verification_passed=false`).
-- [ ] Sub-tabs auto-detectadas: Decoy, Bell (heatmap), Eventos (histograma de
+- [x] Sub-tabs auto-detectadas: Decoy, Bell (heatmap), Eventos (histograma de
       timing_status), Clásico, Provenance.
-- [ ] Biblioteca: guardar/cargar/duplicar/borrar/exportar experimentos con
+- [x] Biblioteca: guardar/cargar/duplicar/borrar/exportar experimentos con
       resultado adjunto.
 - **Hecho cuando:** flujo completo Diseñador → Ejecutar → Resultados →
   Guardar → Recargar funciona para BB84 y E91.

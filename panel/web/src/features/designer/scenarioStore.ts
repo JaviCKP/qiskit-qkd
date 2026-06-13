@@ -4,6 +4,7 @@ import type { ScenarioPayload } from '@/api/client'
 
 type DesignerState = {
   scenario: ScenarioPayload
+  loadScenario: (scenario: ScenarioPayload) => void
   updateField: (target: string, value: unknown) => void
 }
 
@@ -115,6 +116,7 @@ export const defaultScenario: ScenarioPayload = {
 
 export const useDesignerStore = create<DesignerState>((set) => ({
   scenario: defaultScenario,
+  loadScenario: (scenario) => set({ scenario }),
   updateField: (target, value) =>
     set((state) => ({ scenario: updateScenario(state.scenario, target, value) })),
 }))
