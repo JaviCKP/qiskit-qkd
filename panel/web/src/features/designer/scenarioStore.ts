@@ -1,0 +1,146 @@
+import { create } from 'zustand'
+
+import type { ScenarioPayload } from '@/api/client'
+
+type DesignerState = {
+  scenario: ScenarioPayload
+  updateField: (target: string, value: unknown) => void
+}
+
+export const defaultScenario: ScenarioPayload = {
+  schema_version: 1,
+  pulses: 1024,
+  clock_rate_hz: 1_000_000,
+  seed: 7,
+  protocol: { name: 'bb84', basis_choices: ['Z', 'X'] },
+  source: {
+    kind: 'decoy_weak_coherent',
+    emission_probability: 1,
+    mean_photon_number: null,
+    preparation_error_probability: 0,
+    decoy_intensities: [
+      { name: 'signal', mean_photon_number: 0.5, selection_probability: 0.8 },
+      { name: 'decoy', mean_photon_number: 0.1, selection_probability: 0.15 },
+      { name: 'vacuum', mean_photon_number: 0, selection_probability: 0.05 },
+    ],
+  },
+  channel: {
+    kind: 'fiber',
+    distance_km: 25,
+    attenuation_db_km: 0.2,
+    fixed_loss_db: 0,
+    wavelength_nm: 850,
+    transmitter_aperture_m: 0.1,
+    receiver_aperture_m: 0.5,
+    beam_divergence_rad: 0,
+    atmospheric_extinction_db_km: 0,
+    scintillation_sigma: 0,
+    pointing_jitter_rad: 0,
+    underwater_extinction_m_inv: 0,
+    underwater_scattering_broadening_ns_per_m: 0,
+    depolarizing_probability: 0,
+    phase_damping_probability: 0,
+    polarization_rotation_y_rad: 0,
+    polarization_rotation_z_rad: 0,
+    background_count_rate_hz: 0,
+    pmd_coefficient_ps_sqrt_km: 0,
+    chromatic_dispersion_ps_nm_km: 0,
+    source_spectral_width_nm: 0,
+    polarization_dependent_loss_db: 0,
+    pdl_axis_basis: 'Z',
+    pdl_axis_bit: 0,
+    classical_channel_power_mw: 0,
+    raman_coefficient_hz_mw_km: 0,
+    raman_filter_isolation_db: 0,
+  },
+  detector: {
+    kind: 'threshold',
+    efficiency: 0.85,
+    dark_count_rate_hz: 100,
+    gate_width_s: 1e-9,
+    dead_time_s: 0,
+    afterpulse_probability: 0,
+    readout_error_probability: 0,
+    double_click_policy: 'discard',
+  },
+  timing: {
+    propagation_delay_s: 0,
+    jitter_std_s: 0,
+    clock_offset_s: 0,
+    clock_drift_ppm: 0,
+    slot_assignment_policy: 'discard',
+  },
+  post_processing: {
+    sifting_enabled: true,
+    qber_abort_threshold: 0.11,
+    qber_sample_fraction: 0,
+    error_correction_efficiency: 1,
+    reconciliation_block_size: 8,
+    privacy_amplification_enabled: false,
+    decoy_security_estimation_enabled: true,
+    decoy_security_method: 'vacuum_weak_asymptotic',
+  },
+  eavesdropper: {
+    kind: 'none',
+    intercept_probability: 0,
+    pns_split_probability: 1,
+    pns_block_single_photon_probability: 0,
+  },
+  e91: {
+    bell_state: 'psi_minus',
+    alice_angles_rad: [0, Math.PI / 2],
+    bob_angles_rad: [Math.PI / 4, -Math.PI / 4, 0],
+    key_setting_pairs: [[0, 2]],
+    chsh_terms: [
+      [0, 0, 1],
+      [1, 0, 1],
+      [0, 1, 1],
+      [1, 1, -1],
+    ],
+    bob_key_bit_flip: true,
+    chsh_estimation_enabled: true,
+  },
+  dynamic: {
+    parameter_schedules: [
+      {
+        target: 'channel.distance_km',
+        profile: { kind: 'constant', start_s: 0, end_s: 0.001, value: 25 },
+      },
+    ],
+  },
+  event_sample_size: 200,
+  store_full_event_log: false,
+  metadata: {},
+}
+
+export const useDesignerStore = create<DesignerState>((set) => ({
+  scenario: defaultScenario,
+  updateField: (target, value) =>
+    set((state) => ({ scenario: updateScenario(state.scenario, target, value) })),
+}))
+
+function updateScenario(
+  scenario: ScenarioPayload,
+  target: string,
+  value: unknown,
+): ScenarioPayload {
+  const [section, field] = target.split('.')
+  if (section === 'scenario') {
+    return { ...scenario, [field]: value }
+  }
+  const sectionValue = scenario[section]
+  if (!isRecord(sectionValue)) {
+    return scenario
+  }
+  return {
+    ...scenario,
+    [section]: {
+      ...sectionValue,
+      [field]: value,
+    },
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}

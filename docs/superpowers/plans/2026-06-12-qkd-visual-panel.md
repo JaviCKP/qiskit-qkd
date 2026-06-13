@@ -339,16 +339,16 @@ resolver)`, resoluble en el tiempo con `ParameterResolver`):
 
 ### Fase 3 — Web: base + Diseñador
 
-- [ ] Tema (tokens de la Guía estética), layout con sidebar de navegación,
+- [x] Tema (tokens de la Guía estética), layout con sidebar de navegación,
       template Plotly oscuro, generación del cliente TS desde OpenAPI (script
       `npm run gen:api`).
-- [ ] `SchemaForm`: renderizador genérico desde `/api/catalog` (tipos, unidades,
+- [x] `SchemaForm`: renderizador genérico desde `/api/catalog` (tipos, unidades,
       condicionales, sliders log) + editor de tabla decoy con check Σp=1 +
       editor de listas de ángulos E91.
-- [ ] Validación inline conectada a `/api/scenarios/validate` (debounce) y
+- [x] Validación inline conectada a `/api/scenarios/validate` (debounce) y
       DigestChip con estado ejecutado/modificado.
-- [ ] Panel de link budget vivo (characterize con debounce).
-- [ ] Tab Dinámica: constructor de schedules + timeline de `/api/dynamics/preview`.
+- [x] Panel de link budget vivo (characterize con debounce).
+- [x] Tab Dinámica: constructor de schedules + timeline de `/api/dynamics/preview`.
 - **Hecho cuando:** se puede construir desde cero un escenario BB84 decoy con
   fibra + un schedule, sin tocar JSON, con validación visible.
 

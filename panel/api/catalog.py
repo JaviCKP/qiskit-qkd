@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from qiskit_qkd.config import Scenario
 from qiskit_qkd.config.dynamics import SWEEPABLE_TARGETS
+from qiskit_qkd.config.schema import (
+    CHANNEL_KINDS,
+    DECOY_SECURITY_METHODS,
+    DETECTOR_KINDS,
+    E91_BELL_STATES,
+    PROTOCOL_NAMES,
+    SLOT_ASSIGNMENT_POLICIES,
+    SOURCE_KINDS,
+)
 from qiskit_qkd.results import Metrics
 
 
@@ -225,7 +234,14 @@ def _field(
     *,
     unit: str | None = None,
     default: object = None,
+    options: list[str] | None = None,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    step: float | None = None,
+    scale: str = "linear",
+    visible_when: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    limits = _limits_for(key)
     return {
         "key": key,
         "section": key.split(".", 1)[0],
@@ -233,6 +249,14 @@ def _field(
         "type": kind,
         "unit": unit,
         "default": default,
+        "min": minimum if minimum is not None else limits.get("min"),
+        "max": maximum if maximum is not None else limits.get("max"),
+        "step": step if step is not None else limits.get("step"),
+        "scale": scale if scale != "linear" else limits.get("scale", "linear"),
+        "options": options if options is not None else _options_for(key),
+        "visible_when": (
+            visible_when if visible_when is not None else _visible_when_for(key)
+        ),
         "help_es": label,
         "sweepable": key in SWEEPABLE_TARGETS,
     }
@@ -264,27 +288,30 @@ def _complete_sections(sections: list[dict[str, object]]) -> None:
                 key = f"{section_key}.{field_key}"
                 if key not in existing:
                     fields.append(
-                        _field(
-                            key,
-                            field_key.replace("_", " "),
-                            _field_type(default_value),
-                            default=default_value,
-                        ),
-                    )
+                            _field_for_default(key, field_key, default_value),
+                        )
         elif section_key not in {"dynamic", "metadata"}:
             key = f"scenario.{section_key}"
             if key not in existing:
                 fields.append(
-                    _field(
-                        key,
-                        section_key.replace("_", " "),
-                        _field_type(section_value),
-                        default=section_value,
-                    ),
+                    _field_for_default(key, section_key, section_value),
                 )
 
 
-def _field_type(value: object) -> str:
+def _field_for_default(
+    key: str,
+    field_key: str,
+    default_value: object,
+) -> dict[str, object]:
+    return _field(
+        key,
+        field_key.replace("_", " "),
+        _field_type(default_value, key=key),
+        default=default_value,
+    )
+
+
+def _field_type(value: object, *, key: str) -> str:
     if isinstance(value, bool):
         return "boolean"
     if isinstance(value, int):
@@ -292,5 +319,70 @@ def _field_type(value: object) -> str:
     if isinstance(value, float):
         return "number"
     if isinstance(value, list):
-        return "list"
+        if key in {"e91.alice_angles_rad", "e91.bob_angles_rad"}:
+            return "number_list"
+        if key == "protocol.basis_choices":
+            return "string_list"
+        if key == "dynamic.parameter_schedules":
+            return "schedule_list"
+        return "json"
+    if isinstance(value, dict):
+        return "json"
     return "text"
+
+
+def _options_for(key: str) -> list[str] | None:
+    options_by_key = {
+        "protocol.name": sorted(PROTOCOL_NAMES),
+        "protocol.basis_choices": ["Z", "X"],
+        "source.kind": sorted(SOURCE_KINDS),
+        "channel.kind": sorted(CHANNEL_KINDS),
+        "channel.pdl_axis_basis": ["Z", "X"],
+        "detector.kind": sorted(DETECTOR_KINDS),
+        "detector.double_click_policy": ["discard", "random", "error"],
+        "timing.slot_assignment_policy": sorted(SLOT_ASSIGNMENT_POLICIES),
+        "post_processing.decoy_security_method": sorted(DECOY_SECURITY_METHODS),
+        "eavesdropper.kind": [
+            "none",
+            "intercept_resend",
+            "photon_number_splitting",
+        ],
+        "e91.bell_state": sorted(E91_BELL_STATES),
+    }
+    return options_by_key.get(key)
+
+
+def _limits_for(key: str) -> dict[str, object]:
+    if key == "scenario.pulses":
+        return {"min": 1, "step": 1, "scale": "log"}
+    if key == "scenario.clock_rate_hz":
+        return {"min": 1.0, "step": 1.0, "scale": "log"}
+    if key in {"scenario.seed", "scenario.event_sample_size"}:
+        return {"min": 0, "step": 1}
+    if key.endswith("_probability") or key.endswith("_fraction") or key in {
+        "detector.efficiency",
+        "channel.depolarizing_probability",
+        "channel.phase_damping_probability",
+    }:
+        return {"min": 0.0, "max": 1.0, "step": 0.01}
+    if key.endswith("_rate_hz") or key.endswith("_s") or key.endswith("_km"):
+        return {"min": 0.0, "step": 0.001, "scale": "log"}
+    if key.endswith("_db") or key.endswith("_db_km"):
+        return {"min": 0.0, "step": 0.01}
+    if key.endswith("_rad") or key.endswith("_ppm"):
+        return {"step": 0.001}
+    return {}
+
+
+def _visible_when_for(key: str) -> dict[str, object] | None:
+    if key.startswith("e91."):
+        return {"target": "protocol.name", "equals": "e91"}
+    if key == "source.decoy_intensities":
+        return {"target": "source.kind", "equals": "decoy_weak_coherent"}
+    if key.startswith("eavesdropper.pns_"):
+        return {"target": "eavesdropper.kind", "equals": "photon_number_splitting"}
+    if key == "eavesdropper.intercept_probability":
+        return {"target": "eavesdropper.kind", "equals": "intercept_resend"}
+    if key.startswith("post_processing.decoy_"):
+        return {"target": "source.kind", "equals": "decoy_weak_coherent"}
+    return None
