@@ -7,7 +7,7 @@ import {
   scenarioForMedium,
   type MediumId,
 } from '@/features/lab/mediums'
-import { writeTarget } from '@/features/shared/scenarioPaths'
+import { cloneJson, writeTarget } from '@/features/shared/scenarioPaths'
 
 type DesignerState = {
   scenario: ScenarioPayload
@@ -20,11 +20,13 @@ type DesignerState = {
 export const useDesignerStore = create<DesignerState>((set) => ({
   scenario: defaultScenario,
   activeMediumId: inferMediumFromScenario(defaultScenario),
-  loadScenario: (scenario) =>
+  loadScenario: (scenario) => {
+    const nextScenario = cloneJson(scenario)
     set({
-      scenario,
-      activeMediumId: inferMediumFromScenario(scenario),
-    }),
+      scenario: nextScenario,
+      activeMediumId: inferMediumFromScenario(nextScenario),
+    })
+  },
   selectMedium: (mediumId) =>
     set({
       scenario: scenarioForMedium(mediumId),
