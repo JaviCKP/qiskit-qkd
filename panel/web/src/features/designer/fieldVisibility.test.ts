@@ -18,6 +18,12 @@ const fields = [
   field('source.decoy_intensities', {
     visible_when: { target: 'source.kind', equals: 'decoy_weak_coherent' },
   }),
+  field('e91.bell_state', {
+    visible_when: { target: 'protocol.name', equals: 'e91' },
+  }),
+  field('e91.alice_angles_rad', {
+    visible_when: { target: 'protocol.name', equals: 'e91' },
+  }),
 ]
 
 test('fiber shows fiber fields and hides air and underwater fields', () => {
@@ -84,6 +90,34 @@ test('search can reveal hidden matching fields', () => {
   }).map((item) => item.key)
 
   expect(visible).toEqual(['channel.pointing_jitter_rad'])
+})
+
+test('search does not reveal catalog-hidden fields', () => {
+  const visible = visibleFieldsForMedium({
+    fields,
+    mediumId: 'fiber',
+    scenario: { source: { kind: 'ideal_single_photon' } },
+    expert: false,
+    search: 'decoy',
+  }).map((item) => item.key)
+
+  expect(visible).toEqual([])
+})
+
+test('e91 fields are visible when protocol enables them', () => {
+  const visible = visibleFieldsForMedium({
+    fields,
+    mediumId: 'fiber',
+    scenario: {
+      protocol: { name: 'e91' },
+      source: { kind: 'ideal_single_photon' },
+    },
+    expert: false,
+    search: '',
+  }).map((item) => item.key)
+
+  expect(visible).toContain('e91.bell_state')
+  expect(visible).toContain('e91.alice_angles_rad')
 })
 
 function field(key: string, overrides: Partial<CatalogField> = {}): CatalogField {

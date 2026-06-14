@@ -17,6 +17,13 @@ const baseFields = new Set([
   'scenario.event_sample_size',
   'protocol.name',
   'protocol.basis_choices',
+  'e91.bell_state',
+  'e91.alice_angles_rad',
+  'e91.bob_angles_rad',
+  'e91.key_setting_pairs',
+  'e91.chsh_terms',
+  'e91.bob_key_bit_flip',
+  'e91.chsh_estimation_enabled',
   'source.kind',
   'source.emission_probability',
   'source.mean_photon_number',
@@ -127,7 +134,8 @@ export function visibleFieldsForMedium({
 }: VisibleFieldsArgs): CatalogField[] {
   const query = search.trim().toLowerCase()
   return fields.filter((field) => {
-    if (!isCatalogVisible(field, scenario) && query.length === 0) {
+    const catalogVisible = isCatalogVisible(field, scenario)
+    if (!catalogVisible) {
       return false
     }
     if (query.length > 0) {
