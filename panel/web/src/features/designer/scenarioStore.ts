@@ -1,43 +1,38 @@
 import { create } from 'zustand'
 
 import type { ScenarioPayload } from '@/api/client'
-import { defaultScenario } from './defaultScenario'
+import { defaultScenario } from '@/features/designer/defaultScenario'
+import {
+  inferMediumFromScenario,
+  scenarioForMedium,
+  type MediumId,
+} from '@/features/lab/mediums'
+import { writeTarget } from '@/features/shared/scenarioPaths'
 
 type DesignerState = {
   scenario: ScenarioPayload
+  activeMediumId: MediumId
   loadScenario: (scenario: ScenarioPayload) => void
+  selectMedium: (mediumId: MediumId) => void
   updateField: (target: string, value: unknown) => void
 }
 
 export const useDesignerStore = create<DesignerState>((set) => ({
   scenario: defaultScenario,
-  loadScenario: (scenario) => set({ scenario }),
+  activeMediumId: inferMediumFromScenario(defaultScenario),
+  loadScenario: (scenario) =>
+    set({
+      scenario,
+      activeMediumId: inferMediumFromScenario(scenario),
+    }),
+  selectMedium: (mediumId) =>
+    set({
+      scenario: scenarioForMedium(mediumId),
+      activeMediumId: mediumId,
+    }),
   updateField: (target, value) =>
-    set((state) => ({ scenario: updateScenario(state.scenario, target, value) })),
+    set((state) => ({
+      scenario: writeTarget(state.scenario, target, value),
+      activeMediumId: state.activeMediumId,
+    })),
 }))
-
-function updateScenario(
-  scenario: ScenarioPayload,
-  target: string,
-  value: unknown,
-): ScenarioPayload {
-  const [section, field] = target.split('.')
-  if (section === 'scenario') {
-    return { ...scenario, [field]: value }
-  }
-  const sectionValue = scenario[section]
-  if (!isRecord(sectionValue)) {
-    return scenario
-  }
-  return {
-    ...scenario,
-    [section]: {
-      ...sectionValue,
-      [field]: value,
-    },
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
