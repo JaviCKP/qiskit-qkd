@@ -328,9 +328,10 @@ export function inferMediumFromScenario(scenario: ScenarioPayload): MediumId {
     case 'deep_space':
     case 'vacuum':
       return 'vacuum'
+    case 'satellite':
+      return 'satellite'
     case 'free_space':
     case 'atmospheric':
-    case 'satellite':
       return 'air'
     default:
       return 'custom'

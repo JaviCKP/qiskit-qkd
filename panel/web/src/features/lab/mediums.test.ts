@@ -67,6 +67,7 @@ test('infers medium from channel kind when metadata is absent', () => {
   expect(inferMediumFromScenario({ channel: { kind: 'fiber' } })).toBe('fiber')
   expect(inferMediumFromScenario({ channel: { kind: 'underwater' } })).toBe('underwater')
   expect(inferMediumFromScenario({ channel: { kind: 'free_space' } })).toBe('air')
+  expect(inferMediumFromScenario({ channel: { kind: 'satellite' } })).toBe('satellite')
   expect(inferMediumFromScenario({ channel: { kind: 'space' } })).toBe('vacuum')
 })
 
