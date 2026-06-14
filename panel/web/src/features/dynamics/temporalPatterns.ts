@@ -58,6 +58,8 @@ const deltas: Record<TemporalPhenomenon, Record<TemporalSeverity, number>> = {
   eve: { mild: 0.05, moderate: 0.2, severe: 0.5 },
 }
 
+const recoveryDeltaMultiplier = 0.5
+
 export function buildTemporalSchedule(
   request: TemporalPatternRequest,
 ): TemporalSchedule {
@@ -90,10 +92,10 @@ export function buildTemporalSchedule(
     }
   }
 
+  const deltaMultiplier =
+    request.pattern === 'recovery' ? recoveryDeltaMultiplier : 1
   const endValue =
-    request.pattern === 'recovery'
-      ? currentValue - delta / 2
-      : currentValue + (request.direction === 'decreasing' ? -delta : delta)
+    currentValue + directionSign(request.pattern, request.direction) * delta * deltaMultiplier
 
   return {
     target,
@@ -115,15 +117,30 @@ export function describeTemporalSchedule(schedule: TemporalSchedule): string {
   return `${schedule.target} moves from ${schedule.profile.start_value} to ${schedule.profile.end_value} from ${schedule.profile.start_s}s to ${schedule.profile.end_s}s.`
 }
 
-function clampValue(phenomenon: TemporalPhenomenon, value: number): number {
-  const finiteValue = Number.isFinite(value) ? value : 0
-  const nonNegativeValue = Math.max(0, finiteValue)
+function directionSign(
+  pattern: TemporalPatternId,
+  direction: TemporalDirection,
+): 1 | -1 {
+  if (pattern === 'recovery' || direction === 'decreasing') {
+    return -1
+  }
+  return 1
+}
 
-  if (phenomenon === 'error' || phenomenon === 'eve') {
-    return roundNumber(Math.min(1, nonNegativeValue))
+function clampValue(phenomenon: TemporalPhenomenon, value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
   }
 
-  return roundNumber(nonNegativeValue)
+  if (phenomenon === 'error' || phenomenon === 'eve') {
+    return roundNumber(Math.min(1, Math.max(0, value)))
+  }
+
+  if (phenomenon === 'alignment' || phenomenon === 'timing') {
+    return roundNumber(value)
+  }
+
+  return roundNumber(Math.max(0, value))
 }
 
 function roundNumber(value: number): number {

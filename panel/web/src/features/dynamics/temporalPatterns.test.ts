@@ -77,6 +77,60 @@ test('builds burst as a finite constant spike', () => {
   })
 })
 
+test('allows signed timing offsets when decreasing', () => {
+  const schedule = buildTemporalSchedule({
+    pattern: 'drift',
+    phenomenon: 'timing',
+    severity: 'mild',
+    duration: 'short',
+    direction: 'decreasing',
+    currentValue: 0,
+  })
+
+  expect(schedule).toEqual({
+    target: 'timing.clock_offset_s',
+    profile: {
+      kind: 'linear',
+      start_s: 0,
+      end_s: 0.001,
+      start_value: 0,
+      end_value: -1e-10,
+    },
+  })
+})
+
+test('allows signed alignment drift', () => {
+  const schedule = buildTemporalSchedule({
+    pattern: 'drift',
+    phenomenon: 'alignment',
+    severity: 'moderate',
+    duration: 'medium',
+    direction: 'decreasing',
+    currentValue: 0.01,
+  })
+
+  expect(schedule.profile).toEqual({
+    kind: 'linear',
+    start_s: 0,
+    end_s: 0.01,
+    start_value: 0.01,
+    end_value: -0.04,
+  })
+})
+
+test('clamps probability phenomena but not signed phenomena', () => {
+  const schedule = buildTemporalSchedule({
+    pattern: 'degradation',
+    phenomenon: 'error',
+    severity: 'severe',
+    duration: 'long',
+    direction: 'increasing',
+    currentValue: 0.95,
+  })
+
+  expect(schedule.profile).toMatchObject({ end_value: 1 })
+})
+
 test('exposes the required named patterns', () => {
   expect(temporalPatternOptions.map((item) => item.id)).toEqual([
     'stable',
