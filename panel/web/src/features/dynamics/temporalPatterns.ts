@@ -121,6 +121,10 @@ function directionSign(
   pattern: TemporalPatternId,
   direction: TemporalDirection,
 ): 1 | -1 {
+  if (direction === 'spike' && pattern !== 'burst') {
+    throw new Error('spike direction only applies to burst patterns')
+  }
+
   if (pattern === 'recovery' || direction === 'decreasing') {
     return -1
   }

@@ -131,6 +131,19 @@ test('clamps probability phenomena but not signed phenomena', () => {
   expect(schedule.profile).toMatchObject({ end_value: 1 })
 })
 
+test('rejects spike direction for linear temporal patterns', () => {
+  expect(() =>
+    buildTemporalSchedule({
+      pattern: 'degradation',
+      phenomenon: 'error',
+      severity: 'mild',
+      duration: 'short',
+      direction: 'spike',
+      currentValue: 0,
+    }),
+  ).toThrow('spike direction only applies to burst patterns')
+})
+
 test('exposes the required named patterns', () => {
   expect(temporalPatternOptions.map((item) => item.id)).toEqual([
     'stable',
