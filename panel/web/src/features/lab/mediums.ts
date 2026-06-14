@@ -1,4 +1,5 @@
 import type { ScenarioPayload } from '@/api/client'
+import type { CurveRecipeId } from '@/features/curves/recipes'
 import { defaultScenario } from '@/features/designer/defaultScenario'
 import { cloneJson, isRecord, readTarget } from '@/features/shared/scenarioPaths'
 
@@ -22,7 +23,7 @@ export type MediumDefinition = {
   expectedRange: string
   detectorLabel: string
   realismLabel: string
-  defaultCurveRecipeId: string
+  defaultCurveRecipeId: CurveRecipeId
   scenario: ScenarioPayload
 }
 
@@ -209,7 +210,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '0 km reference',
     detectorLabel: 'Ideal detector',
     realismLabel: 'Baseline',
-    defaultCurveRecipeId: 'ideal-distance-reference',
+    defaultCurveRecipeId: 'ideal-baseline',
     scenario: mediumScenarios.ideal,
   },
   fiber: {
@@ -223,7 +224,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '100 km spool',
     detectorLabel: 'Threshold detector',
     realismLabel: 'Field-like',
-    defaultCurveRecipeId: 'fiber-distance-loss',
+    defaultCurveRecipeId: 'skr-distance',
     scenario: mediumScenarios.fiber,
   },
   vacuum: {
@@ -237,7 +238,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '1000 km optical path',
     detectorLabel: 'Low-noise threshold',
     realismLabel: 'Geometry-limited',
-    defaultCurveRecipeId: 'vacuum-aperture-link',
+    defaultCurveRecipeId: 'gain-pointing',
     scenario: mediumScenarios.vacuum,
   },
   air: {
@@ -251,7 +252,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '1.5 km terrestrial',
     detectorLabel: 'Threshold detector',
     realismLabel: 'Weather-sensitive',
-    defaultCurveRecipeId: 'air-pointing-budget',
+    defaultCurveRecipeId: 'qber-atmosphere',
     scenario: mediumScenarios.air,
   },
   satellite: {
@@ -265,7 +266,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '500 km slant path',
     detectorLabel: 'Space-ready threshold',
     realismLabel: 'LEO-ish',
-    defaultCurveRecipeId: 'satellite-pointing-window',
+    defaultCurveRecipeId: 'gain-pointing',
     scenario: mediumScenarios.satellite,
   },
   underwater: {
@@ -279,7 +280,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: '30 m clear water',
     detectorLabel: 'Threshold detector',
     realismLabel: 'Absorption-limited',
-    defaultCurveRecipeId: 'underwater-distance-visibility',
+    defaultCurveRecipeId: 'gain-water-extinction',
     scenario: mediumScenarios.underwater,
   },
   custom: {
@@ -293,7 +294,7 @@ export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
     expectedRange: 'User-defined',
     detectorLabel: 'User-defined',
     realismLabel: 'Manual',
-    defaultCurveRecipeId: 'custom-manual-sweep',
+    defaultCurveRecipeId: 'custom-axis',
     scenario: mediumScenarios.custom,
   },
 }

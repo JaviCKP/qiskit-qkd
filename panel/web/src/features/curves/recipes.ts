@@ -22,6 +22,7 @@ export type CurveRequest = {
   axis: AxisRequest
   series: AxisRequest | null
   repeats: number
+  scenarioPatch: Record<string, Record<string, unknown>> | null
 }
 
 export type CurveRecipe = {
@@ -31,6 +32,7 @@ export type CurveRecipe = {
   metric: string
   defaultAxis: AxisRequest
   preferredMedia: MediumId[]
+  scenarioPatch: Record<string, Record<string, unknown>> | null
 }
 
 const allMedia: MediumId[] = [
@@ -89,8 +91,9 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
     'Ataque intercept-resend',
     'Cuando se vuelve visible una Eve que intercepta parte de la senal?',
     'qber',
-    axis('eavesdropper.intercept_probability', 0, 1, 21, 'linear'),
+    axis('eavesdropper.intercept_probability', 0, 1, 11, 'linear'),
     ['ideal', 'fiber', 'custom'],
+    { eavesdropper: { kind: 'intercept_resend' } },
   ),
   'chsh-depolarization': recipe(
     'chsh-depolarization',
@@ -99,6 +102,10 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
     'chsh_s',
     axis('channel.depolarizing_probability', 0, 0.5, 21, 'linear'),
     ['ideal', 'vacuum', 'custom'],
+    {
+      protocol: { name: 'e91' },
+      source: { kind: 'entangled_pair' },
+    },
   ),
   'gain-pointing': recipe(
     'gain-pointing',
@@ -129,7 +136,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
     'Ventana temporal',
     'Como cambia la deteccion al ensanchar el jitter temporal?',
     'raw_detection_rate_hz',
-    axis('timing.jitter_std_s', 0, 0.000000005, 21, 'linear'),
+    axis('time_s', 0, 0.001, 8, 'linear'),
     ['fiber', 'air', 'satellite', 'underwater', 'custom'],
   ),
   'custom-axis': recipe(
@@ -157,6 +164,7 @@ export function buildCurveRequest(
     axis: cloneAxis(axisForRecipe(selected, mediumId)),
     series: null,
     repeats: 1,
+    scenarioPatch: cloneScenarioPatch(selected.scenarioPatch),
   }
 }
 
@@ -164,15 +172,17 @@ export function describeCurveRequest(request: CurveRequest): string {
   const values = request.axis.values
 
   if (Array.isArray(values)) {
-    return `Barrido de ${humanTarget(request.axis.target)} con ${values.length} valores.`
+    const valueLabel = values.length === 1 ? 'valor' : 'valores'
+    return `Barrido de ${humanTarget(request.axis.target)} con ${values.length} ${valueLabel}.`
   }
 
   const unit = unitForTarget(request.axis.target)
   const unitSuffix = unit ? ` ${unit}` : ''
+  const pointLabel = values.steps === 1 ? 'punto' : 'puntos'
 
   return `Barrido de ${humanTarget(request.axis.target)} de ${formatNumber(
     values.start,
-  )} a ${formatNumber(values.stop)}${unitSuffix} en ${values.steps} puntos.`
+  )} a ${formatNumber(values.stop)}${unitSuffix} en ${values.steps} ${pointLabel}.`
 }
 
 function recipe(
@@ -182,8 +192,17 @@ function recipe(
   metric: string,
   defaultAxis: AxisRequest,
   preferredMedia: MediumId[],
+  scenarioPatch: Record<string, Record<string, unknown>> | null = null,
 ): CurveRecipe {
-  return { id, label, question, metric, defaultAxis, preferredMedia }
+  return {
+    id,
+    label,
+    question,
+    metric,
+    defaultAxis,
+    preferredMedia,
+    scenarioPatch,
+  }
 }
 
 function axis(
@@ -224,6 +243,18 @@ function cloneAxis(request: AxisRequest): AxisRequest {
   }
 }
 
+function cloneScenarioPatch(
+  patch: Record<string, Record<string, unknown>> | null,
+): Record<string, Record<string, unknown>> | null {
+  if (patch === null) {
+    return null
+  }
+
+  return Object.fromEntries(
+    Object.entries(patch).map(([section, values]) => [section, { ...values }]),
+  )
+}
+
 function humanTarget(target: string): string {
   switch (target) {
     case 'scenario.pulses':
@@ -246,6 +277,8 @@ function humanTarget(target: string): string {
       return 'extincion bajo el agua'
     case 'timing.jitter_std_s':
       return 'jitter temporal'
+    case 'time_s':
+      return 'tiempo'
     default:
       return target
   }
@@ -264,6 +297,7 @@ function unitForTarget(target: string): string | null {
     case 'channel.underwater_extinction_m_inv':
       return 'm^-1'
     case 'timing.jitter_std_s':
+    case 'time_s':
       return 's'
     default:
       return null
