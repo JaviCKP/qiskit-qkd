@@ -1,4 +1,12 @@
-"""Validated configuration objects for reproducible QKD scenarios."""
+"""Validated, versioned configuration objects for reproducible QKD scenarios.
+
+Scenario version is a wire-format marker, not a scientific input.  Version 1
+is still readable and its canonical digest is preserved.  Version 2 currently
+contains the same physical fields with stricter version handling; an explicit
+``migrate_scenario_v1_to_v2`` call is required to opt into the v2 wire shape.
+Consequently loading an historical v1 document never changes its digest or
+simulation semantics merely because this module was upgraded.
+"""
 
 from __future__ import annotations
 
@@ -29,7 +37,13 @@ from qiskit_qkd.reproducibility import sample_unit_interval
 
 from .dynamics import DynamicConfig
 
-SCHEMA_VERSION = 1
+LEGACY_SCENARIO_SCHEMA_VERSION = 1
+SCENARIO_SCHEMA_VERSION = 2
+SCHEMA_VERSION = SCENARIO_SCHEMA_VERSION
+SUPPORTED_SCENARIO_SCHEMA_VERSIONS = {
+    LEGACY_SCENARIO_SCHEMA_VERSION,
+    SCENARIO_SCHEMA_VERSION,
+}
 SLOT_ASSIGNMENT_POLICIES = {"discard", "nearest"}
 PROTOCOL_NAMES = {"bb84", "e91"}
 BB84_BASIS_CHOICES = {"Z", "X"}
@@ -64,6 +78,35 @@ E91_DEFAULT_BOB_ANGLES_RAD = (math.pi / 4.0, -math.pi / 4.0, 0.0)
 E91_DEFAULT_KEY_SETTING_PAIRS = ((0, 2),)
 E91_DEFAULT_CHSH_TERMS = ((0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, -1))
 PROBABILITY_SUM_TOLERANCE = 1e-12
+
+
+class UnsupportedScenarioVersionError(ValueError):
+    """Raised when a scenario uses a wire version this library cannot read."""
+
+    def __init__(self, found_version: Any) -> None:
+        self.found_version = found_version
+        self.supported_versions = tuple(sorted(SUPPORTED_SCENARIO_SCHEMA_VERSIONS))
+        self.suggestion = (
+            "Use a supported scenario schema version (1 or 2), or upgrade "
+            "qiskit-qkd to a reader that supports the found version."
+        )
+        super().__init__(
+            "Unsupported scenario schema_version "
+            f"{found_version!r} (found_version={found_version!r}); "
+            f"supported versions are {self.supported_versions}. "
+            f"{self.suggestion}"
+        )
+
+
+def _require_scenario_schema_version(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(
+            "scenario schema_version must be an integer; "
+            f"found_version={value!r}. Use schema_version 1 or 2."
+        )
+    if value not in SUPPORTED_SCENARIO_SCHEMA_VERSIONS:
+        raise UnsupportedScenarioVersionError(value)
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -1044,21 +1087,75 @@ def _normalize_chsh_terms(
     value: tuple[tuple[int, int, int], ...] | list[tuple[int, int, int] | list[int]],
 ) -> tuple[tuple[int, int, int], ...]:
     if not isinstance(value, tuple | list):
-        raise TypeError("chsh_terms must be a tuple or list")
+        raise TypeError(
+            "chsh_terms must be a tuple or list containing exactly four "
+            "(alice, bob, coefficient) terms; "
+            f"got {value!r} ({type(value).__name__})",
+        )
+    if len(value) != 4:
+        raise ValueError(
+            "chsh_terms must contain exactly four terms forming a 2x2 "
+            f"Cartesian product; got {len(value)} terms",
+        )
     terms: list[tuple[int, int, int]] = []
     for index, term in enumerate(value):
         if not isinstance(term, tuple | list) or len(term) != 3:
-            raise TypeError("chsh_terms entries must contain three values")
+            raise TypeError(
+                f"chsh_terms[{index}] must contain exactly three values "
+                f"(alice, bob, coefficient); got {term!r}",
+            )
         alice, bob, coefficient = term
-        coefficient = int(coefficient)
+        if not isinstance(coefficient, int) or isinstance(coefficient, bool):
+            raise TypeError(
+                f"chsh_terms[{index}][2] must be the integer -1 or 1 "
+                f"(not bool); got {coefficient!r}",
+            )
         if coefficient not in {-1, 1}:
-            raise ValueError("chsh term coefficients must be -1 or 1")
+            raise ValueError(
+                f"chsh_terms[{index}][2] must be the integer -1 or 1; "
+                f"got {coefficient!r}",
+            )
         terms.append(
             (
                 require_non_negative_int(f"chsh_terms[{index}][0]", alice),
                 require_non_negative_int(f"chsh_terms[{index}][1]", bob),
                 coefficient,
             ),
+        )
+
+    setting_pairs = {(alice, bob) for alice, bob, _coefficient in terms}
+    if len(setting_pairs) != 4:
+        raise ValueError(
+            "chsh_terms must contain exactly four unique setting pairs; "
+            f"got {[term[:2] for term in terms]!r}",
+        )
+
+    alice_settings = {alice for alice, _bob in setting_pairs}
+    bob_settings = {bob for _alice, bob in setting_pairs}
+    cartesian_product = {
+        (alice, bob) for alice in alice_settings for bob in bob_settings
+    }
+    if (
+        len(alice_settings) != 2
+        or len(bob_settings) != 2
+        or setting_pairs != cartesian_product
+    ):
+        raise ValueError(
+            "chsh_terms setting pairs must form the complete Cartesian product "
+            "of exactly two Alice settings and two Bob settings; "
+            f"got {sorted(setting_pairs)!r}",
+        )
+
+    coefficient_product = math.prod(
+        coefficient for _alice, _bob, coefficient in terms
+    )
+    if coefficient_product != -1:
+        raise ValueError(
+            "chsh_terms coefficient signs must have product -1 so the "
+            "classical CHSH bound is 2; "
+            f"got {[coefficient for _alice, _bob, coefficient in terms]!r} with "
+            f"product {coefficient_product}. Choose an odd number of -1 "
+            "coefficients",
         )
     return tuple(terms)
 
@@ -1132,6 +1229,12 @@ class E91Config:
             require_bool("chsh_estimation_enabled", self.chsh_estimation_enabled),
         )
 
+    @property
+    def classical_bound(self) -> float:
+        """Return the local-hidden-variable bound of the validated CHSH form."""
+
+        return 2.0
+
     def to_dict(self) -> JSONObject:
         return {
             "bell_state": self.bell_state,
@@ -1194,6 +1297,14 @@ class Scenario:
     event_sample_size: int = 0
     store_full_event_log: bool = False
     metadata: JSONObject = field(default_factory=dict)
+    # Kept out of the constructor/equality: readers retain the wire version so
+    # a historical document is not silently rewritten as v2 on a round trip.
+    _wire_schema_version: int = field(
+        init=False,
+        repr=False,
+        compare=False,
+        default=SCENARIO_SCHEMA_VERSION,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "pulses", require_positive_int("pulses", self.pulses))
@@ -1223,9 +1334,24 @@ class Scenario:
     def duration_s(self) -> float:
         return self.pulses / self.clock_rate_hz
 
-    def to_dict(self) -> JSONObject:
+    def to_dict(self, schema_version: int | None = None) -> JSONObject:
+        return self.to_dict_for_version(schema_version)
+
+    def to_dict_for_version(self, schema_version: int | None = None) -> JSONObject:
+        """Serialize using this object's wire version or an explicit version.
+
+        ``schema_version=2`` is the explicit v1-to-v2 migration boundary.  The
+        default preserves the version read from disk, so merely opening and
+        saving a v1 scenario cannot change its persisted representation.
+        """
+
+        version = (
+            self._wire_schema_version
+            if schema_version is None
+            else _require_scenario_schema_version(schema_version)
+        )
         return {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": version,
             "pulses": self.pulses,
             "clock_rate_hz": self.clock_rate_hz,
             "seed": self.seed,
@@ -1264,10 +1390,13 @@ class Scenario:
             "metadata",
         }
         reject_unknown_fields("Scenario", data, allowed)
-        schema_version = data.get("schema_version", SCHEMA_VERSION)
-        if schema_version != SCHEMA_VERSION:
-            raise ValueError(f"Unsupported scenario schema_version: {schema_version}")
-        return cls(
+        # Missing version is the historical v1 shape.  Keeping this default is
+        # deliberate: old exports predate the marker and must retain v1
+        # canonicalisation/digest semantics when read.
+        schema_version = _require_scenario_schema_version(
+            data.get("schema_version", LEGACY_SCENARIO_SCHEMA_VERSION),
+        )
+        scenario = cls(
             pulses=data["pulses"],
             clock_rate_hz=data["clock_rate_hz"],
             seed=data["seed"],
@@ -1286,16 +1415,23 @@ class Scenario:
             store_full_event_log=data.get("store_full_event_log", False),
             metadata=data.get("metadata", {}),
         )
+        object.__setattr__(scenario, "_wire_schema_version", schema_version)
+        return scenario
 
-    def to_json(self) -> str:
-        return dumps_pretty(self.to_dict())
+    def to_json(self, schema_version: int | None = None) -> str:
+        return dumps_pretty(self.to_dict(schema_version))
 
     @classmethod
     def from_json(cls, payload: str) -> Self:
         return cls.from_dict(loads_object(payload))
 
     def digest(self) -> str:
-        encoded = dumps_canonical(self.to_dict()).encode("utf-8")
+        # schema_version is transport metadata and must not change the
+        # scientific identity.  Fixing it to the historical v1 marker keeps
+        # digests generated by older releases stable while v2 is introduced.
+        encoded = dumps_canonical(
+            self.to_dict_for_version(LEGACY_SCENARIO_SCHEMA_VERSION),
+        ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
     def reproducibility_summary(self, sample_size: int = 5) -> JSONObject:
@@ -1305,3 +1441,37 @@ class Scenario:
             "rng": "python.random.Random",
             "unit_interval_sample": list(sample_unit_interval(self.seed, sample_size)),
         }
+
+
+def migrate_scenario_v1_to_v2(data: Mapping[str, Any]) -> JSONObject:
+    """Explicitly migrate a v1 scenario payload to the v2 wire shape.
+
+    The input is never mutated.  Validation and canonical default expansion
+    happen through the unchanged v1 reader, then the result is emitted with a
+    v2 marker.  Because :meth:`Scenario.digest` excludes this transport marker,
+    the migrated scenario retains the historical scientific digest.
+    """
+
+    if not isinstance(data, Mapping):
+        raise TypeError(
+            "scenario v1 migration requires a mapping, "
+            f"got {type(data).__name__}"
+        )
+    source_version = data.get(
+        "schema_version",
+        LEGACY_SCENARIO_SCHEMA_VERSION,
+    )
+    if source_version != LEGACY_SCENARIO_SCHEMA_VERSION:
+        if source_version in SUPPORTED_SCENARIO_SCHEMA_VERSIONS:
+            raise ValueError(
+                "scenario migration expects schema_version 1; "
+                f"found_version={source_version!r} is already supported"
+            )
+        raise UnsupportedScenarioVersionError(source_version)
+    scenario = Scenario.from_dict(data)
+    return scenario.to_dict(SCENARIO_SCHEMA_VERSION)
+
+
+# Short aliases make the migration boundary discoverable without changing the
+# existing Scenario reader API.
+migrate_v1_to_v2 = migrate_scenario_v1_to_v2

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from qiskit_qkd._json import JSONObject
@@ -10,7 +10,7 @@ from qiskit_qkd.backends import QiskitSamplerBackend, backend_from_scenario
 from qiskit_qkd.channel_core import prepare_physical_round
 from qiskit_qkd.channels import channel_from_config
 from qiskit_qkd.channels.impairments import effective_background_count_rate_hz
-from qiskit_qkd.config import Scenario
+from qiskit_qkd.config import Scenario, require_executable_scenario
 from qiskit_qkd.detectors import detector_from_config
 from qiskit_qkd.eavesdroppers import eve_from_config
 from qiskit_qkd.postprocessing import (
@@ -18,13 +18,20 @@ from qiskit_qkd.postprocessing import (
     estimate_vacuum_weak_decoy_security,
     qber,
     run_bb84_classical_postprocessing,
-    sift_bb84_event,
 )
+from qiskit_qkd.postprocessing.sifting import bb84_sift_outcome
 from qiskit_qkd.reproducibility import make_rng
 from qiskit_qkd.results import Event, Metrics, SimulationResult
 from qiskit_qkd.sources import source_from_config
+from qiskit_qkd.timing import timing_context_from_scenario
 
 MeasureRound = tuple[int, str, str]
+CancellationCheck = Callable[[], None]
+
+
+def _check_cancellation(check: CancellationCheck | None) -> None:
+    if check is not None:
+        check()
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,9 +63,12 @@ class BB84Protocol:
         self,
         scenario: Scenario,
         backend: QiskitSamplerBackend | None = None,
+        *,
+        cancellation_check: CancellationCheck | None = None,
     ) -> SimulationResult:
         """Run BB84 with event-level source, channel, and detector outcomes."""
 
+        _check_cancellation(cancellation_check)
         if scenario.protocol.name.lower() != "bb84":
             raise ValueError("BB84Protocol requires scenario.protocol.name='bb84'")
         if scenario.source.kind in {"entangled_pair", "bell_pair", "e91"}:
@@ -66,6 +76,7 @@ class BB84Protocol:
                 "BB84Protocol requires a prepare-and-measure source; "
                 "use E91Protocol for entangled-pair sources",
             )
+        require_executable_scenario(scenario)
         if scenario.dynamic.parameter_schedules:
             raise ValueError(
                 "BB84Protocol.run does not resolve dynamic schedules; "
@@ -82,6 +93,7 @@ class BB84Protocol:
         channel = channel_from_config(scenario.channel)
         detector = detector_from_config(scenario.detector)
         eavesdropper = eve_from_config(scenario.eavesdropper)
+        timing_context = timing_context_from_scenario(scenario)
         bases = tuple(scenario.protocol.basis_choices)
         sifting_enabled = scenario.post_processing.sifting_enabled
         background_count_rate_hz = effective_background_count_rate_hz(
@@ -207,40 +219,49 @@ class BB84Protocol:
                     if round_.signal_assigned_slot is None
                     else bob_basis_by_slot[round_.signal_assigned_slot]
                 )
-                event = sift_bb84_event(
-                    Event(
-                        index=round_.index,
-                        time_s=round_.time_s,
-                        time_slot=round_.time_slot,
-                        emission_time_s=round_.emission_time_s,
-                        expected_arrival_time_s=round_.expected_arrival_time_s,
-                        arrival_time_s=round_.arrival_time_s,
-                        bob_gate_start_s=round_.bob_gate_start_s,
-                        bob_gate_end_s=round_.bob_gate_end_s,
-                        assigned_slot=assigned_slot,
-                        timing_status=timing_status,
-                        alice_bit=round_.alice_bit,
-                        alice_basis=round_.alice_basis,
-                        bob_basis=bob_basis,
-                        emitted=round_.emitted,
-                        photon_number=round_.photon_number,
-                        surviving_photon_number=round_.surviving_photon_number,
-                        intensity_class=round_.intensity_class,
-                        transmitted=round_.transmitted,
-                        detected=detection.detected,
-                        detection_origin=detection.detection_origin,
-                        bob_bit=detection.bob_bit,
-                        detection_pattern=detection.detection_pattern,
-                        eve_action=(
-                            None if attack is None else attack.eve_action
-                        ),
-                        eve_basis=None if attack is None else attack.eve_basis,
-                        eve_detectable=(
-                            False if attack is None else attack.eve_detectable
-                        ),
-                        tags={} if attack is None else attack.tags(),
-                    ),
+                sifted_event, error_event = bb84_sift_outcome(
+                    detected=detection.detected,
+                    assigned_slot=assigned_slot,
+                    time_slot=round_.time_slot,
+                    alice_basis=round_.alice_basis,
+                    bob_basis=bob_basis,
+                    alice_bit=round_.alice_bit,
+                    bob_bit=detection.bob_bit,
                     sifting_enabled=sifting_enabled,
+                )
+                event = Event(
+                    index=round_.index,
+                    time_s=round_.time_s,
+                    time_slot=round_.time_slot,
+                    emission_time_s=round_.emission_time_s,
+                    expected_arrival_time_s=round_.expected_arrival_time_s,
+                    arrival_time_s=round_.arrival_time_s,
+                    bob_gate_start_s=round_.bob_gate_start_s,
+                    bob_gate_end_s=round_.bob_gate_end_s,
+                    assigned_slot=assigned_slot,
+                    timing_status=timing_status,
+                    alice_bit=round_.alice_bit,
+                    alice_basis=round_.alice_basis,
+                    bob_basis=bob_basis,
+                    emitted=round_.emitted,
+                    photon_number=round_.photon_number,
+                    surviving_photon_number=round_.surviving_photon_number,
+                    intensity_class=round_.intensity_class,
+                    transmitted=round_.transmitted,
+                    detected=detection.detected,
+                    detection_origin=detection.detection_origin,
+                    bob_bit=detection.bob_bit,
+                    detection_pattern=detection.detection_pattern,
+                    sifted=sifted_event,
+                    error=error_event,
+                    eve_action=(
+                        None if attack is None else attack.eve_action
+                    ),
+                    eve_basis=None if attack is None else attack.eve_basis,
+                    eve_detectable=(
+                        False if attack is None else attack.eve_detectable
+                    ),
+                    tags={} if attack is None else attack.tags(),
                 )
                 emitted += int(event.emitted)
                 transmitted += int(event.transmitted)
@@ -267,6 +288,8 @@ class BB84Protocol:
 
         pending: list[PreparedRound] = []
         for index in range(scenario.pulses):
+            if index % batch_limit == 0:
+                _check_cancellation(cancellation_check)
             alice_bit = rng.randrange(2)
             alice_basis = rng.choice(bases)
             bob_basis = rng.choice(bases)
@@ -279,6 +302,7 @@ class BB84Protocol:
                 rng=rng,
                 alice_bit=alice_bit,
                 alice_basis=alice_basis,
+                timing_context=timing_context,
             )
             pending.append(
                 PreparedRound(
@@ -309,10 +333,14 @@ class BB84Protocol:
                     bob_basis_by_slot,
                 )
             ):
+                _check_cancellation(cancellation_check)
                 consume(pending[:batch_limit])
                 del pending[:batch_limit]
+                _check_cancellation(cancellation_check)
         if pending:
+            _check_cancellation(cancellation_check)
             consume(pending)
+            _check_cancellation(cancellation_check)
 
         metrics = self._metrics_from_counts(
             scenario,
@@ -401,18 +429,29 @@ class BB84Protocol:
         eve_known_sifted_bits: int,
         loss_db: float,
     ) -> Metrics:
-        qber_value = qber(errors, sifted)
+        observed_qber = qber(errors, sifted)
+        # Metrics.qber is a schema-v1 compatibility scalar. The assessment
+        # remains authoritative and records an undefined QBER for zero sample.
+        legacy_qber = 0.0 if observed_qber is None else observed_qber
         gain = detected / scenario.pulses
         raw_detection_rate_hz = gain * scenario.clock_rate_hz
         sifted_key_rate_bps = (sifted / scenario.pulses) * scenario.clock_rate_hz
-        secret_fraction = bb84_secret_fraction(
-            qber_value,
-            error_correction_efficiency=(
-                scenario.post_processing.error_correction_efficiency
-            ),
+        secret_fraction = (
+            0.0
+            if observed_qber is None
+            else bb84_secret_fraction(
+                observed_qber,
+                error_correction_efficiency=(
+                    scenario.post_processing.error_correction_efficiency
+                ),
+            )
         )
         threshold = scenario.post_processing.qber_abort_threshold
-        abort = threshold is not None and qber_value > threshold
+        abort = (
+            observed_qber is not None
+            and threshold is not None
+            and observed_qber > threshold
+        )
         secret_key_rate_bps = 0.0 if abort else sifted_key_rate_bps * secret_fraction
         eve_intercepted_fraction = (
             eve_interceptions / transmitted if transmitted > 0 else 0.0
@@ -433,7 +472,7 @@ class BB84Protocol:
             afterpulse_clicks=afterpulse_clicks,
             eve_intercepted_fraction=eve_intercepted_fraction,
             eve_information_estimate=eve_information_estimate,
-            qber=qber_value,
+            qber=legacy_qber,
             loss_db=loss_db,
             gain=gain,
             raw_detection_rate_hz=raw_detection_rate_hz,
@@ -512,6 +551,13 @@ class BB84Protocol:
                 "errors": row["errors"],
                 "gain": row["detected"] / pulses if pulses > 0 else 0.0,
                 "qber": row["errors"] / sifted if sifted > 0 else 0.0,
+                "qber_defined": sifted > 0,
+                "qber_method": (
+                    "full_sifted_key_diagnostic"
+                    if sifted > 0
+                    else "unavailable"
+                ),
+                "data_status": "available" if sifted > 0 else "insufficient_data",
             }
             summary[intensity_class] = output
         if (

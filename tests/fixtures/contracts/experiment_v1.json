@@ -1,0 +1,14 @@
+{
+  "id": "e_fixture_v1",
+  "name": "Fixture v1",
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 1,
+    "pulses": 8,
+    "clock_rate_hz": 1000000.0,
+    "seed": 7
+  },
+  "tags": ["fixture"],
+  "curve_recipes": [],
+  "last_result": null
+}

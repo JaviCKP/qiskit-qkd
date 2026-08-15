@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from qiskit_qkd.analysis import sweep_bb84_time
-from qiskit_qkd.config import DynamicConfig, ParameterSchedule, Scenario
+import pytest
+
+from qiskit_qkd.analysis import (
+    sweep_bb84_distance,
+    sweep_bb84_time,
+    sweep_scenario_parameter,
+)
+from qiskit_qkd.config import ChannelConfig, DynamicConfig, ParameterSchedule, Scenario
 from qiskit_qkd.results import Metrics, SimulationResult
-from qiskit_qkd.temporal import ConstantProfile
+from qiskit_qkd.temporal import LinearRampProfile
 
 
 class RecordingProtocol:
@@ -31,7 +37,12 @@ def test_sweep_bb84_time_runs_effective_scenarios_and_returns_plot_ready_rows() 
             parameter_schedules=(
                 ParameterSchedule(
                     target="channel.depolarizing_probability",
-                    profile=ConstantProfile(start_s=0.0, end_s=3.0, value=0.04),
+                    profile=LinearRampProfile(
+                        start_s=0.0,
+                        end_s=3.0,
+                        start_value=0.04,
+                        end_value=0.08,
+                    ),
                 ),
             ),
         ),
@@ -46,10 +57,50 @@ def test_sweep_bb84_time_runs_effective_scenarios_and_returns_plot_ready_rows() 
     )
 
     assert [row["time_s"] for row in rows] == [0.0, 0.0, 4.0, 4.0]
-    assert [row["seed"] for row in rows] == [100, 101, 102, 103]
+    assert [row["seed"] for row in rows] == [100, 101, 100, 101]
     assert rows[0]["channel.depolarizing_probability"] == 0.04
     assert rows[2]["channel.depolarizing_probability"] == 0.0
-    assert rows[0]["qber"] == 0.04
-    assert rows[2]["qber"] == 0.0
+    assert rows[0]["qber"] is None
+    assert rows[2]["qber"] is None
+    assert rows[0]["qber_defined"] is False
+    assert rows[2]["qber_defined"] is False
+    assert rows[0]["qber_margin"] is None
+    assert rows[2]["qber_margin"] is None
     assert protocol.scenarios[0].channel.depolarizing_probability == 0.04
     assert protocol.scenarios[2].channel.depolarizing_probability == 0.0
+
+
+@pytest.mark.parametrize("invalid_repeats", [True, 1.0, 1.5])
+def test_public_sweep_helpers_reject_non_integer_repeats(
+    invalid_repeats: object,
+) -> None:
+    protocol = RecordingProtocol()
+    scenario = Scenario(
+        pulses=10,
+        clock_rate_hz=1.0,
+        seed=100,
+        channel=ChannelConfig(kind="fiber", distance_km=1.0),
+    )
+
+    with pytest.raises(TypeError, match="repeats must be a positive integer"):
+        sweep_bb84_distance(
+            protocol,
+            scenario,
+            [1.0],
+            repeats=invalid_repeats,  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="repeats must be a positive integer"):
+        sweep_bb84_time(
+            protocol,
+            scenario,
+            [0.0, 1.0],
+            repeats=invalid_repeats,  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="repeats must be a positive integer"):
+        sweep_scenario_parameter(
+            protocol,
+            scenario,
+            "scenario.pulses",
+            [10],
+            repeats=invalid_repeats,  # type: ignore[arg-type]
+        )

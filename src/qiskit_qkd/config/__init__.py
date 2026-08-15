@@ -1,7 +1,31 @@
 """Configuration dataclasses for QKD scenarios."""
 
+from .capabilities import (
+    CapabilityError,
+    CapabilityIssue,
+    capability_issues,
+    capability_registry_payload,
+    effective_parameter_snapshot,
+    require_effective_target,
+    require_executable_scenario,
+    require_time_evolution,
+)
+from .domain_metadata import (
+    DEFAULT_SCENARIO,
+    DOMAIN_METADATA_VERSION,
+    builtin_presets,
+    domain_defaults_payload,
+    domain_fields,
+    domain_fields_payload,
+    domain_metadata_payload,
+    medium_definitions,
+)
 from .dynamics import DynamicConfig, ParameterSchedule
 from .schema import (
+    LEGACY_SCENARIO_SCHEMA_VERSION,
+    SCENARIO_SCHEMA_VERSION,
+    SCHEMA_VERSION,
+    SUPPORTED_SCENARIO_SCHEMA_VERSIONS,
     ChannelConfig,
     DecoyIntensity,
     DetectorConfig,
@@ -12,9 +36,14 @@ from .schema import (
     Scenario,
     SourceConfig,
     TimingConfig,
+    UnsupportedScenarioVersionError,
+    migrate_scenario_v1_to_v2,
+    migrate_v1_to_v2,
 )
 
 __all__ = [
+    "CapabilityError",
+    "CapabilityIssue",
     "ChannelConfig",
     "DecoyIntensity",
     "DetectorConfig",
@@ -27,4 +56,25 @@ __all__ = [
     "Scenario",
     "SourceConfig",
     "TimingConfig",
+    "LEGACY_SCENARIO_SCHEMA_VERSION",
+    "SCENARIO_SCHEMA_VERSION",
+    "SCHEMA_VERSION",
+    "SUPPORTED_SCENARIO_SCHEMA_VERSIONS",
+    "UnsupportedScenarioVersionError",
+    "migrate_scenario_v1_to_v2",
+    "migrate_v1_to_v2",
+    "capability_issues",
+    "capability_registry_payload",
+    "effective_parameter_snapshot",
+    "require_effective_target",
+    "require_executable_scenario",
+    "require_time_evolution",
+    "DEFAULT_SCENARIO",
+    "DOMAIN_METADATA_VERSION",
+    "builtin_presets",
+    "domain_defaults_payload",
+    "domain_fields",
+    "domain_fields_payload",
+    "domain_metadata_payload",
+    "medium_definitions",
 ]

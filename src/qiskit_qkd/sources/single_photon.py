@@ -15,9 +15,13 @@ from qiskit_qkd._validation import (
     require_finite_number,
     require_non_empty_str,
     require_non_negative_int,
+    require_non_negative_number,
     require_probability,
 )
 from qiskit_qkd.config import DecoyIntensity, SourceConfig
+
+_POISSON_INVERSION_MAX_MEAN = 30.0
+_MAX_POISSON_MEAN = 1_000_000_000_000.0
 
 
 def _validate_optional_str(name: str, value: str | None) -> str | None:
@@ -165,15 +169,73 @@ class EntangledPairSource:
 
 
 def _sample_poisson(rng: random.Random, mean_photon_number: float) -> int:
-    if mean_photon_number == 0.0:
+    mean = require_non_negative_number(
+        "mean_photon_number",
+        mean_photon_number,
+    )
+    if mean > _MAX_POISSON_MEAN:
+        raise ValueError(
+            "mean_photon_number exceeds the Poisson sampling limit: "
+            f"got {mean!r}, maximum {_MAX_POISSON_MEAN!r}; reduce the source mean",
+        )
+    if mean == 0.0:
         return 0
-    threshold = math.exp(-mean_photon_number)
+    if mean < _POISSON_INVERSION_MAX_MEAN:
+        return _sample_poisson_inversion(rng, mean)
+    return _sample_poisson_ptrs(rng, mean)
+
+
+def _sample_poisson_inversion(rng: random.Random, mean: float) -> int:
+    """Keep the historical RNG sequence for ordinary weak-coherent means."""
+
+    threshold = math.exp(-mean)
     product = 1.0
     photons = 0
     while product > threshold:
         photons += 1
         product *= rng.random()
     return photons - 1
+
+
+def _sample_poisson_ptrs(rng: random.Random, mean: float) -> int:
+    """Sample large means with Hoermann's transformed-rejection method."""
+
+    sqrt_mean = math.sqrt(mean)
+    log_mean = math.log(mean)
+    b = 0.931 + 2.53 * sqrt_mean
+    a = -0.059 + 0.02483 * b
+    inverse_alpha = 1.1239 + 1.1328 / (b - 3.4)
+    squeeze = 0.9277 - 3.6224 / (b - 2.0)
+    while True:
+        centered_uniform = rng.random() - 0.5
+        acceptance_uniform = rng.random()
+        distance_from_edge = 0.5 - abs(centered_uniform)
+        if distance_from_edge <= 0.0:
+            continue
+        candidate = math.floor(
+            (2.0 * a / distance_from_edge + b) * centered_uniform
+            + mean
+            + 0.43,
+        )
+        if distance_from_edge >= 0.07 and acceptance_uniform <= squeeze:
+            return candidate
+        if candidate < 0 or (
+            distance_from_edge < 0.013
+            and acceptance_uniform > distance_from_edge
+        ):
+            continue
+        if acceptance_uniform == 0.0:
+            return candidate
+        acceptance_log = (
+            math.log(acceptance_uniform)
+            + math.log(inverse_alpha)
+            - math.log(a / (distance_from_edge * distance_from_edge) + b)
+        )
+        poisson_log_mass = (
+            -mean + candidate * log_mean - math.lgamma(candidate + 1.0)
+        )
+        if acceptance_log <= poisson_log_mass:
+            return candidate
 
 
 def source_from_config(

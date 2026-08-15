@@ -3,6 +3,16 @@
 @tailwind utilities;
 
 :root {
+  --color-background: 8 12 17;
+  --color-surface: 15 21 28;
+  --color-raised: 23 31 40;
+  --color-border: 42 54 66;
+  --color-accent: 80 211 225;
+  --color-success: 74 201 151;
+  --color-warning: 234 181 82;
+  --color-danger: 238 113 113;
+  --radius-panel: 14px;
+  --radius-control: 8px;
   font-family: Inter, system-ui, Segoe UI, sans-serif;
   color-scheme: dark;
   font-synthesis: none;
@@ -15,10 +25,72 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #101112;
+  background:
+    linear-gradient(180deg, rgb(10 16 23) 0, rgb(var(--color-background)) 420px),
+    rgb(var(--color-background));
   overflow-x: hidden;
 }
 
 html {
   overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+[tabindex] {
+  outline: none;
+}
+
+:focus-visible {
+  box-shadow: 0 0 0 3px rgb(var(--color-accent) / 0.24);
+}
+
+::selection {
+  background: rgb(var(--color-accent) / 0.25);
+}
+
+/* Keep metadata readable in dense scientific panels; no essential label is
+   rendered below the 12px floor, even where a legacy utility used 10/11px. */
+.text-\[10px\],
+.text-\[11px\] {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(var(--color-background));
+  border-radius: 999px;
+  background: rgb(var(--color-border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

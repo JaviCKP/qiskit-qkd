@@ -139,7 +139,12 @@ def test_timing_state_reports_in_gate_probability_and_walkoff() -> None:
 
 
 def test_generic_sweep_runs_any_sweepable_target_with_metric_rows() -> None:
-    scenario = Scenario(pulses=10, clock_rate_hz=1.0, seed=10)
+    scenario = Scenario(
+        pulses=10,
+        clock_rate_hz=1.0,
+        seed=10,
+        channel=ChannelConfig(kind="fiber"),
+    )
     protocol = RecordingProtocol()
 
     rows = sweep_scenario_parameter(
@@ -152,6 +157,6 @@ def test_generic_sweep_runs_any_sweepable_target_with_metric_rows() -> None:
 
     assert "scenario.pulses" in SWEEPABLE_TARGETS
     assert [row["channel.distance_km"] for row in rows] == [0.0, 0.0, 5.0, 5.0]
-    assert [row["seed"] for row in rows] == [10, 11, 12, 13]
+    assert [row["seed"] for row in rows] == [10, 11, 10, 11]
     assert rows[2]["loss_db"] == 5.0
     assert protocol.scenarios[2].channel.distance_km == 5.0

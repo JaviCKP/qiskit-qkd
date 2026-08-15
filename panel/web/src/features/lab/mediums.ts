@@ -1,4 +1,11 @@
-import type { ScenarioPayload } from '@/api/client'
+import type {
+  ChannelPayload,
+  Catalog,
+  DetectorPayload,
+  JsonObject,
+  ScenarioPayload,
+  SourcePayload,
+} from '@/api/client'
 import type { CurveRecipeId } from '@/features/curves/recipes'
 import { defaultScenario } from '@/features/designer/defaultScenario'
 import { cloneJson, isRecord, readTarget } from '@/features/shared/scenarioPaths'
@@ -67,7 +74,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       afterpulse_probability: 0,
       readout_error_probability: 0,
     },
-    distanceScheduleValue: 0,
   }),
   fiber: buildScenario('fiber', {
     source: {
@@ -78,7 +84,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       distance_km: 100,
       attenuation_db_km: 0.2,
       fixed_loss_db: 0,
-      wavelength_nm: 1550,
       background_count_rate_hz: 0,
       pmd_coefficient_ps_sqrt_km: 0.05,
       chromatic_dispersion_ps_nm_km: 17,
@@ -90,7 +95,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       dark_count_rate_hz: 10,
       gate_width_s: 1e-9,
     },
-    distanceScheduleValue: 100,
   }),
   vacuum: buildScenario('vacuum', {
     source: {
@@ -116,7 +120,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       dark_count_rate_hz: 5,
       gate_width_s: 1e-9,
     },
-    distanceScheduleValue: 1000,
   }),
   air: buildScenario('air', {
     source: {
@@ -142,7 +145,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       dark_count_rate_hz: 100,
       gate_width_s: 1e-9,
     },
-    distanceScheduleValue: 1.5,
   }),
   satellite: buildScenario('satellite', {
     source: {
@@ -168,7 +170,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       dark_count_rate_hz: 25,
       gate_width_s: 1e-9,
     },
-    distanceScheduleValue: 500,
   }),
   underwater: buildScenario('underwater', {
     source: {
@@ -193,7 +194,6 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
       dark_count_rate_hz: 50,
       gate_width_s: 1e-9,
     },
-    distanceScheduleValue: 0.03,
   }),
   custom: buildScenario('custom', {}),
 }
@@ -201,98 +201,98 @@ const mediumScenarios: Record<MediumId, ScenarioPayload> = {
 export const mediumDefinitions: Record<MediumId, MediumDefinition> = {
   ideal: {
     id: 'ideal',
-    label: 'Ideal laboratory channel',
+    label: 'Canal ideal',
     shortLabel: 'Ideal',
-    summary: 'Lossless baseline with an ideal source, clean channel, and ideal detector.',
+    summary: 'Referencia sin perdidas con fuente, canal y detector ideales.',
     channelKinds: ['ideal'],
     icon: 'sparkles',
     accentClass: 'border-emerald-400 bg-emerald-50 text-emerald-900',
-    expectedRange: '0 km reference',
-    detectorLabel: 'Ideal detector',
-    realismLabel: 'Baseline',
+    expectedRange: '0 km',
+    detectorLabel: 'Detector ideal',
+    realismLabel: 'Referencia',
     defaultCurveRecipeId: 'ideal-baseline',
     scenario: mediumScenarios.ideal,
   },
   fiber: {
     id: 'fiber',
-    label: 'Telecom fiber',
-    shortLabel: 'Fiber',
-    summary: 'Decoy-state BB84 over 1550 nm fiber with realistic attenuation and low dark counts.',
+    label: 'Fibra telecom',
+    shortLabel: 'Fibra',
+    summary: 'BB84 con decoys sobre fibra, atenuacion realista y bajo ruido oscuro.',
     channelKinds: ['fiber'],
     icon: 'cable',
     accentClass: 'border-sky-400 bg-sky-50 text-sky-900',
-    expectedRange: '100 km spool',
+    expectedRange: '100 km',
     detectorLabel: 'Threshold detector',
-    realismLabel: 'Field-like',
+    realismLabel: 'Campo',
     defaultCurveRecipeId: 'skr-distance',
     scenario: mediumScenarios.fiber,
   },
   vacuum: {
     id: 'vacuum',
-    label: 'Vacuum line of sight',
-    shortLabel: 'Vacuum',
-    summary: 'Long-range space propagation without atmospheric extinction or scintillation.',
+    label: 'Vacio',
+    shortLabel: 'Vacio',
+    summary: 'Propagacion espacial de largo alcance sin extincion atmosferica ni centelleo.',
     channelKinds: ['space', 'deep_space', 'vacuum'],
     icon: 'orbit',
     accentClass: 'border-violet-400 bg-violet-50 text-violet-900',
-    expectedRange: '1000 km optical path',
-    detectorLabel: 'Low-noise threshold',
-    realismLabel: 'Geometry-limited',
-    defaultCurveRecipeId: 'gain-pointing',
+    expectedRange: '1000 km',
+    detectorLabel: 'Bajo ruido',
+    realismLabel: 'Geometria',
+    defaultCurveRecipeId: 'qber-distance',
     scenario: mediumScenarios.vacuum,
   },
   air: {
     id: 'air',
-    label: 'Urban air link',
-    shortLabel: 'Air',
-    summary: 'Short free-space optical hop with extinction, scintillation, pointing, and daylight background.',
+    label: 'Aire urbano',
+    shortLabel: 'Aire',
+    summary: 'Salto optico terrestre con extincion, centelleo, apuntamiento y fondo diurno.',
     channelKinds: ['free_space', 'atmospheric'],
     icon: 'cloud',
     accentClass: 'border-amber-400 bg-amber-50 text-amber-950',
-    expectedRange: '1.5 km terrestrial',
+    expectedRange: '1.5 km',
     detectorLabel: 'Threshold detector',
-    realismLabel: 'Weather-sensitive',
+    realismLabel: 'Atmosfera',
     defaultCurveRecipeId: 'qber-atmosphere',
     scenario: mediumScenarios.air,
   },
   satellite: {
     id: 'satellite',
-    label: 'LEO satellite pass',
-    shortLabel: 'Satellite',
-    summary: 'Free-space downlink with LEO-scale distance, aperture loss, background, and tight pointing.',
+    label: 'Satelite LEO',
+    shortLabel: 'Satelite',
+    summary: 'Downlink de espacio libre con distancia LEO, perdida por apertura, fondo y apuntamiento.',
     channelKinds: ['satellite'],
     icon: 'satellite',
     accentClass: 'border-indigo-400 bg-indigo-50 text-indigo-900',
-    expectedRange: '500 km slant path',
-    detectorLabel: 'Space-ready threshold',
-    realismLabel: 'LEO-ish',
+    expectedRange: '500 km',
+    detectorLabel: 'Umbral espacial',
+    realismLabel: 'Orbital',
     defaultCurveRecipeId: 'gain-pointing',
     scenario: mediumScenarios.satellite,
   },
   underwater: {
     id: 'underwater',
-    label: 'Underwater blue-green',
-    shortLabel: 'Water',
-    summary: 'Short 520 nm underwater link with clear-water extinction and scattering broadening.',
+    label: 'Submarino',
+    shortLabel: 'Submarino',
+    summary: 'Enlace azul-verde de 520 nm bajo el agua con extincion y ensanchamiento por scattering.',
     channelKinds: ['underwater', 'water', 'marine'],
     icon: 'waves',
     accentClass: 'border-cyan-400 bg-cyan-50 text-cyan-950',
-    expectedRange: '30 m clear water',
+    expectedRange: '30 m',
     detectorLabel: 'Threshold detector',
-    realismLabel: 'Absorption-limited',
+    realismLabel: 'Agua',
     defaultCurveRecipeId: 'gain-water-extinction',
     scenario: mediumScenarios.underwater,
   },
   custom: {
     id: 'custom',
-    label: 'Custom scenario',
+    label: 'Custom experto',
     shortLabel: 'Custom',
-    summary: 'Starts from the designer default and leaves medium assumptions open for manual tuning.',
+    summary: 'Parte del escenario por defecto y deja todos los controles abiertos.',
     channelKinds: [],
     icon: 'sliders',
     accentClass: 'border-slate-400 bg-slate-50 text-slate-900',
-    expectedRange: 'User-defined',
-    detectorLabel: 'User-defined',
+    expectedRange: 'Manual',
+    detectorLabel: 'Manual',
     realismLabel: 'Manual',
     defaultCurveRecipeId: 'custom-axis',
     scenario: mediumScenarios.custom,
@@ -305,7 +305,21 @@ export function scenarioForMedium(id: MediumId): ScenarioPayload {
   return cloneJson(mediumDefinitions[id].scenario)
 }
 
-export function inferMediumFromScenario(scenario: ScenarioPayload): MediumId {
+/** Apply scientific medium scenarios received from the versioned catalog.
+ * Visual labels/icons/copy remain unchanged and are intentionally not part
+ * of the backend metadata.  Missing/legacy metadata leaves the explicit
+ * offline scenarios above intact.
+ */
+export function hydrateMediumScenarios(catalog: Catalog): void {
+  if (catalog.metadata_version !== 1 || !catalog.media) return
+  for (const media of catalog.media) {
+    if (!isMediumId(media.id) || !media.scenario) continue
+    mediumDefinitions[media.id].scenario = cloneJson(media.scenario)
+    mediumDefinitions[media.id].channelKinds = [...media.channel_kinds]
+  }
+}
+
+export function inferMediumFromScenario(scenario: JsonObject): MediumId {
   const metadata = readTarget(scenario, 'scenario.metadata')
   if (isRecord(metadata) && isMediumId(metadata.mediumId)) {
     return metadata.mediumId
@@ -343,17 +357,16 @@ function buildScenario(
   mediumId: MediumId,
   updates: {
     pulses?: number
-    source?: Record<string, unknown>
-    channel?: Record<string, unknown>
-    detector?: Record<string, unknown>
-    distanceScheduleValue?: number
+    source?: Partial<SourcePayload>
+    channel?: Partial<ChannelPayload>
+    detector?: Partial<DetectorPayload>
   },
 ): ScenarioPayload {
   const scenario = cloneJson(defaultScenario)
   const next: ScenarioPayload = {
     ...scenario,
     metadata: {
-      ...readRecord(scenario.metadata),
+      ...scenario.metadata,
       mediumId,
     },
   }
@@ -362,37 +375,17 @@ function buildScenario(
     next.pulses = updates.pulses
   }
   if (updates.source) {
-    next.source = { ...readRecord(scenario.source), ...updates.source }
+    next.source = { ...scenario.source, ...updates.source }
   }
   if (updates.channel) {
-    next.channel = { ...readRecord(scenario.channel), ...updates.channel }
+    next.channel = { ...scenario.channel, ...updates.channel }
   }
   if (updates.detector) {
-    next.detector = { ...readRecord(scenario.detector), ...updates.detector }
+    next.detector = { ...scenario.detector, ...updates.detector }
   }
-  if (updates.distanceScheduleValue !== undefined) {
-    next.dynamic = {
-      ...readRecord(scenario.dynamic),
-      parameter_schedules: [
-        {
-          target: 'channel.distance_km',
-          profile: {
-            kind: 'constant',
-            start_s: 0,
-            end_s: 0.001,
-            value: updates.distanceScheduleValue,
-          },
-        },
-      ],
-    }
-  }
-
   return next
 }
 
-function readRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {}
-}
 
 function isMediumId(value: unknown): value is MediumId {
   return typeof value === 'string' && mediumIds.includes(value as MediumId)

@@ -37,7 +37,7 @@ METRIC_LABELS = {
     "qber_margin": "QBER margin",
     "raw_detection_rate_hz": "Raw detection rate (Hz)",
     "secret_key_rate_bps": "Secret key rate (bps)",
-    "secure_fraction": "Secure fraction",
+    "secure_fraction": "Deprecated legacy flag fraction",
     "sifted": "Sifted",
     "sifted_fraction": "Sifted fraction",
     "sifted_key_rate_bps": "Sifted key rate (bps)",

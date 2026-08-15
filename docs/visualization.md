@@ -25,8 +25,9 @@ Visualization is an analysis layer, not a new simulator path.
 - Saved figures are reproducible when the scenario seed and input rows are
   reproducible.
 - Figures use labels and units from repository metric names.
-- Security interpretation remains in the model and docs. Plots do not add new
-  finite-key, composable, or device-independent claims.
+- Scientific interpretation remains in `SimulationResult.assessment` and the
+  docs. Plots do not add finite-key, composable, real-system, or
+  device-independent claims.
 
 ## Derived Metrics
 
@@ -56,17 +57,35 @@ sifted_fraction            sifted / detected
 error_fraction             errors / sifted
 timing_discard_fraction    timing_discards / transmitted
 privacy_efficiency         final_key_length / corrected_key_length
-qber_margin                qber_abort_threshold - qber
+qber_margin                qber_abort_threshold - assessment QBER;
+                           null when QBER is undefined
 chsh_margin                chsh_s - 2
-secure                     positive secret rate and not aborted
+key_estimate_available     assessment key status is estimated_key_available
+secure                     deprecated compatibility field; always false
 ```
 
-`summarize_metric_rows(...)` aggregates repeated rows by one or more columns
-and reports population mean, standard deviation, min, max, p05, p95, and
-abort/secure fractions when those boolean columns are present.
+The row-level `qber` is the assessment value and is null without a sample;
+`legacy_qber` preserves the schema-v1 numeric placeholder separately. The
+derived column named `secure` is retained for API compatibility only and is
+always false. New consumers should display `data_status`, `key_status`,
+`rate_estimate_status`, `key_estimate_available`, and `security_scope` instead
+of relabelling a rate or legacy boolean as formal security.
 
-`secure_distance_limit(...)` returns the largest distance with positive
-non-aborted `secret_key_rate_bps`.
+`summarize_metric_rows(...)` aggregates repeated rows by one or more columns
+and reports population mean, standard deviation, min, max, p05, p95, and a
+finite-value count for each requested metric. It separates
+`legacy_abort_fraction` from `threshold_decision_fraction` and reports the
+number of available tri-state threshold decisions. These are descriptive
+Monte Carlo summaries, not confidence intervals or hypothesis tests. With one
+repetition, dispersion and percentile columns do not quantify uncertainty;
+use multiple independent seeds and report the per-metric finite count.
+
+`secure_distance_limit(...)` is also a legacy API name. It returns the largest
+sampled distance only when the assessment reports an estimated key, an
+available positive rate, defined QBER, no exceeded threshold, and no failed
+verification. A positive schema-v1 rate plus `abort=False` is insufficient.
+The result remains a grid-dependent pedagogical-rate diagnostic, not a
+certified secure range or an interpolated physical limit.
 
 ## Generic Plots
 
@@ -136,6 +155,34 @@ from qiskit_qkd.visualization import (
   against Eve interception diagnostics.
 - `plot_timing_summary(result)` plots timing-status counts from stored event
   samples.
+
+Recipes do not run simulations or validate that rows share a model. Their
+input restrictions are therefore part of the contract:
+
+- Distance/channel/Eve recipes require the named numeric columns and should
+  receive comparable rows generated under documented seed/version policies.
+- `plot_decoy_security_summary` filters to `row_type="intensity"`; it does not
+  plot or validate the asymptotic row named `security`.
+- `plot_e91_chsh_summary` visualizes observed correlations and an optional
+  supplied `S`; the figure adds no sample-size or significance analysis unless
+  the caller annotates it.
+- `plot_timing_summary(result)` counts only `result.event_sample`. Unless the
+  full event log was stored, the bars describe that stored sample rather than
+  all attempted pulses.
+
+Curve/sweep recipes must also pass the capability checks before producing
+those rows:
+
+- A mean-photon-number axis is active only for a scalar weak-coherent source
+  (`weak_coherent` or `decoy_weak_coherent`);
+  explicit `decoy_intensities` shadow the top-level mean and require a
+  decoy-specific target instead.
+- Pointing jitter is active for the free-space (`free_space`, `atmospheric`,
+  `satellite`) and underwater (`underwater`, `water`, `marine`) families, not
+  for the stable-baseline vacuum-space (`space`, `deep_space`, `vacuum`) family.
+- A time axis requires BB84, at least two distinct points, and a supported
+  schedule that varies over them. A missing schedule, constant profile, or
+  equal-endpoint profile is not an executable time-evolution recipe.
 
 ## Example
 

@@ -22,15 +22,15 @@ def binary_entropy(probability: float) -> float:
     )
 
 
-def qber(errors: int, sifted: int) -> float:
-    """Return QBER from sifted-key error counts."""
+def qber(errors: int, sifted: int) -> float | None:
+    """Return QBER, or ``None`` when no sifted sample exists."""
 
     errors = require_non_negative_int("errors", errors)
     sifted = require_non_negative_int("sifted", sifted)
     if errors > sifted:
         raise ValueError("errors must not exceed sifted")
     if sifted == 0:
-        return 0.0
+        return None
     return errors / sifted
 
 

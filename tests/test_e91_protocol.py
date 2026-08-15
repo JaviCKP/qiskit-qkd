@@ -23,6 +23,25 @@ from qiskit_qkd.analysis import bell_rows_from_result
 from qiskit_qkd.protocols import E91Protocol
 
 
+class LegacyE91Backend:
+    """Expose the existing all-emitted-rounds backend contract only."""
+
+    def __init__(self, backend: QiskitSamplerBackend) -> None:
+        self.backend = backend
+
+    def configure_from_scenario(self, scenario: Scenario) -> None:
+        self.backend.configure_from_scenario(scenario)
+
+    def measure_e91_batch(self, rounds):
+        return self.backend.measure_e91_batch(rounds)
+
+    def provenance(self):
+        return self.backend.provenance()
+
+    def qiskit_summary(self):
+        return self.backend.qiskit_summary()
+
+
 def e91_scenario(
     *,
     seed: int = 91,
@@ -79,6 +98,17 @@ def test_e91_ideal_singlet_violates_chsh_and_extracts_key() -> None:
     )
     assert result.bell["bell_violation"] is True
     assert result.bell["chsh_s"] == result.metrics.chsh_s
+    assert result.bell["classical_bound"] == 2.0
+    assert result.bell["observed_threshold_exceeded"] is True
+    assert result.bell["bell_violation_legacy_projection_of"] == (
+        "observed_threshold_exceeded"
+    )
+    assert result.bell["bell_violation_legacy_none_maps_to"] is False
+    assert "bell_violation_legacy_alias_of" not in result.bell
+    assert result.classical["classical_bound"] == 2.0
+    assert result.classical["observed_threshold_exceeded"] is True
+    assert result.classical["bell_violation"] is True
+    assert "bell_violation_legacy_alias_of" not in result.classical
     assert {
         row["setting_pair"]
         for row in result.bell["setting_rows"]
@@ -87,6 +117,40 @@ def test_e91_ideal_singlet_violates_chsh_and_extracts_key() -> None:
     rows = bell_rows_from_result(result)
     assert len(rows) == 6
     assert all("correlation" in row for row in rows)
+
+
+def test_e91_marks_no_chsh_conclusion_without_coincidences() -> None:
+    scenario = replace(
+        e91_scenario(seed=92, pulses=32),
+        detector=DetectorConfig(
+            kind="threshold",
+            efficiency=0.0,
+            dark_count_rate_hz=0.0,
+            gate_width_s=1e-9,
+        ),
+    )
+
+    result = E91Protocol().run(
+        scenario,
+        backend=QiskitSamplerBackend(seed=scenario.seed, max_recorded_results=0),
+    )
+
+    assert result.bell["chsh_sample_size"] == 0
+    assert result.bell["observed_chsh_s"] is None
+    assert result.bell["classical_bound"] == 2.0
+    assert result.bell["observed_threshold_exceeded"] is None
+    assert result.bell["bell_violation"] is False
+    assert result.bell["bell_violation_legacy_projection_of"] == (
+        "observed_threshold_exceeded"
+    )
+    assert result.bell["bell_violation_legacy_none_maps_to"] is False
+    assert result.classical["observed_threshold_exceeded"] is None
+    assert result.classical["classical_bound"] == 2.0
+    assert result.classical["bell_violation"] is False
+    assert result.classical["bell_violation_legacy_projection_of"] == (
+        "observed_threshold_exceeded"
+    )
+    assert result.classical["bell_violation_legacy_none_maps_to"] is False
 
 
 def test_e91_source_pair_preparation_error_reduces_chsh() -> None:
@@ -266,6 +330,48 @@ def test_e91_nearest_assigned_signal_is_not_a_coincidence() -> None:
     assert result.metrics.detected == 0
     assert all(event.detected is False for event in nearest_events)
     assert all(event.sifted is False for event in nearest_events)
+
+
+def test_e91_omits_unconsumed_noiseless_rounds_without_changing_results() -> None:
+    scenario = Scenario(
+        pulses=512,
+        clock_rate_hz=1_000_000.0,
+        seed=104,
+        protocol=ProtocolConfig(name="e91"),
+        e91=E91Config(),
+        source=SourceConfig(
+            kind="entangled_pair",
+            preparation_error_probability=0.2,
+        ),
+        channel=ChannelConfig(kind="fiber", distance_km=25.0),
+        detector=DetectorConfig(
+            efficiency=0.8,
+            dark_count_rate_hz=100.0,
+            gate_width_s=1e-9,
+        ),
+        post_processing=PostProcessingConfig(qber_abort_threshold=None),
+    )
+    optimized_backend = QiskitSamplerBackend(seed=scenario.seed)
+    legacy_delegate = QiskitSamplerBackend(seed=scenario.seed)
+
+    optimized = E91Protocol().run(scenario, backend=optimized_backend)
+    legacy = E91Protocol().run(
+        scenario,
+        backend=LegacyE91Backend(legacy_delegate),
+    )
+
+    assert optimized.metrics == legacy.metrics
+    assert optimized.classical == legacy.classical
+    assert optimized.bell == legacy.bell
+    assert optimized.event_sample == legacy.event_sample == ()
+    assert optimized.qiskit["circuit_count"] < legacy.qiskit["circuit_count"]
+    assert optimized.qiskit["e91_omitted_circuit_count"] > 0
+    assert optimized_backend._preparation_rng.random() == (
+        legacy_delegate._preparation_rng.random()
+    )
+    assert optimized_backend._measurement_rng.random() == (
+        legacy_delegate._measurement_rng.random()
+    )
 
 
 def test_e91_with_lossy_fiber_and_free_space_channels() -> None:

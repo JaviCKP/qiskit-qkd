@@ -39,7 +39,7 @@ def build_metrics() -> Metrics:
         abort=False,
         eve_intercepted_fraction=0.0,
         eve_information_estimate=0.0,
-        chsh_s=2.5,
+        chsh_s=None,
     )
 
 

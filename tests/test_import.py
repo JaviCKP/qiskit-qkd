@@ -8,7 +8,8 @@ import qiskit_qkd
 
 
 def test_package_exposes_version() -> None:
-    assert qiskit_qkd.__version__ == "0.0.0"
+    assert qiskit_qkd.__version__
+    assert qiskit_qkd.__version__ != "0.0.0"
 
 
 def test_package_exposes_non_fiber_channel_classes_lazily() -> None:
@@ -49,5 +50,5 @@ def test_package_import_does_not_import_qiskit_runtime_modules() -> None:
     assert observed == {
         "qiskit": False,
         "qiskit_aer": False,
-        "version": "0.0.0",
+        "version": qiskit_qkd.__version__,
     }

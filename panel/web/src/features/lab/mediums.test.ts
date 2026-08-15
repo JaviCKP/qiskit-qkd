@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 
 import {
   inferMediumFromScenario,
+  hydrateMediumScenarios,
   mediumDefinitions,
   mediumOptions,
   scenarioForMedium,
@@ -27,7 +28,6 @@ test('builds realistic medium scenarios without sharing object references', () =
     kind: 'fiber',
     distance_km: 100,
     attenuation_db_km: 0.2,
-    wavelength_nm: 1550,
   })
   expect(fiber.detector).toMatchObject({
     kind: 'threshold',
@@ -51,6 +51,12 @@ test('keeps ideal channel clean and quick', () => {
   })
   expect(ideal.pulses).toBe(1024)
   expect(ideal.metadata).toMatchObject({ mediumId: 'ideal' })
+})
+
+test('keeps static presets free of schedules that would shadow edited values', () => {
+  for (const medium of mediumOptions) {
+    expect(scenarioForMedium(medium.id).dynamic.parameter_schedules).toEqual([])
+  }
 })
 
 test('infers medium from metadata before channel kind', () => {
@@ -77,4 +83,23 @@ test('medium definitions include card copy and default curve recipes', () => {
     expect(mediumDefinitions[medium.id].summary).toBeTruthy()
     expect(mediumDefinitions[medium.id].defaultCurveRecipeId).toBeTruthy()
   }
+})
+
+test('hydrates scientific scenarios from catalog while retaining visual metadata', () => {
+  const before = mediumDefinitions.fiber.label
+  hydrateMediumScenarios({
+    sections: [],
+    metrics: [],
+    metadata_version: 1,
+    media: [{
+      id: 'fiber',
+      channel_kinds: ['fiber'],
+      scenario: {
+        ...scenarioForMedium('fiber'),
+        channel: { ...scenarioForMedium('fiber').channel, distance_km: 42 },
+      },
+    }],
+  })
+  expect(scenarioForMedium('fiber').channel.distance_km).toBe(42)
+  expect(mediumDefinitions.fiber.label).toBe(before)
 })

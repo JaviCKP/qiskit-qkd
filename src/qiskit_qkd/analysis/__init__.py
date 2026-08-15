@@ -15,6 +15,10 @@ from .metrics import (
     summarize_metric_rows,
 )
 from .sweeps import (
+    COMPACT_SWEEP_SCHEMA_VERSION,
+    compact_sweep_payload,
+    expand_compact_sweep_rows,
+    expand_compact_sweep_summary,
     sweep_bb84_distance,
     sweep_bb84_time,
     sweep_scenario_parameter,
@@ -30,7 +34,11 @@ __all__ = [
     "add_derived_metrics",
     "bell_rows_from_result",
     "chsh_margin",
+    "COMPACT_SWEEP_SCHEMA_VERSION",
+    "compact_sweep_payload",
     "decoy_rows_from_result",
+    "expand_compact_sweep_rows",
+    "expand_compact_sweep_summary",
     "metric_rows_from_results",
     "qber_margin",
     "secure_distance_limit",

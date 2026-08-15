@@ -17,12 +17,12 @@ decoy-security diagnostics and PNS Eve traces. Phase 7 adds E91 Bell-pair
 configuration, CHSH diagnostics, and plot-ready Bell rows. Phase 8 adds
 non-fiber optical channel configuration for space, free-space/satellite, and
 underwater links. Phase 9 adds optional derived metric rows and Matplotlib
-figures on top of these analysis outputs. Dashboards and CLI commands remain
-future work.
+figures on top of these analysis outputs. A local React/FastAPI panel (`panel/`)
+now builds on these rows; CLI commands remain future work.
 
 ## Scenario
 
-`Scenario` is the complete reproducible setup for one simulation run. It stores:
+`Scenario` is the requested configuration for one simulation run. It stores:
 
 - `pulses`: number of attempted emissions.
 - `clock_rate_hz`: source clock rate.
@@ -36,7 +36,9 @@ future work.
 - `store_full_event_log`: disabled by default to avoid storing millions of rows.
 - `metadata`: JSON-safe extra labels.
 
-The same scenario and seed produce the same digest and reproducibility summary.
+The same normalized scenario produces the same requested-scenario digest. Exact
+run reproduction additionally requires the same effective model, library and
+Qiskit/Aer versions, backend/primitive path, and relevant execution seeds.
 
 ## Config Objects
 
@@ -59,7 +61,7 @@ The initial config objects are intentionally small:
   assignment policy.
 - `PostProcessingConfig`: sifting flag, QBER abort threshold, error correction
   efficiency, QBER sample fraction, reconciliation block size, privacy
-  amplification flag, and decoy security estimator controls.
+  amplification flag, and legacy-named decoy diagnostic-estimator controls.
 - `EveConfig`: adversarial model kind, intercept probability, and PNS split
   or single-photon blocking probabilities.
 - `E91Config`: Bell state, Alice/Bob angular settings, key setting pairs, CHSH
@@ -113,6 +115,10 @@ and `analysis.sweep_bb84_time()` use the same mechanism to produce flat rows
 with `time_s`, effective parameter columns, and metrics. `BB84Protocol.run()`
 receives an ordinary static scenario, does not mutate parameters internally
 during a single run, and rejects scenarios with unresolved dynamic schedules.
+Successive sweep points are independent static runs; they are not a continuous
+physical trajectory and do not carry detector state from one point to the next.
+Their rows retain `requested_scenario_digest` for the base input and
+`effective_scenario_digest` for the point actually executed.
 
 Decoy summaries follow the same analysis-friendly style:
 `analysis.decoy_rows_from_result()` converts `SimulationResult.decoy` into flat
@@ -209,26 +215,84 @@ received-photon counter. Timing fields include `emission_time_s`,
 
 - pulses, emitted, transmitted, detected, sifted, and errors.
 - timing discards, dead-time discards, and afterpulse clicks.
-- QBER, loss, gain, raw detection rate, sifted key rate, and secret key rate.
+- QBER, loss, gain, raw detection rate, sifted key rate, and the legacy field
+  `secret_key_rate_bps` (a pedagogical asymptotic estimate).
 - abort flag, Eve summary fields, and optional CHSH value.
+
+Two compatibility fields need interpretation rather than literal reading.
+`metrics.qber` remains `0.0` when `sifted == 0`; this is a legacy numeric
+placeholder, not a measured zero error rate. `metrics.abort` is the historical
+aggregate decision and is not interchangeable with the classical
+sample-threshold decision, verification success, key availability, or formal
+security.
 
 `SimulationResult.classical` stores post-processing diagnostics such as QBER
 sample size, revealed sample count, `leak_ec`, corrected-key length, residual
 mismatch count, privacy-amplified length, and final-key digest for reproducible
 small examples.
 
-`SimulationResult` stores the scenario, metrics, classical diagnostics, decoy
-diagnostics, provenance, Qiskit execution summary, library version, and an
-optional event sample. Provenance includes the seed, scenario digest, library
-version, and RNG family. The Qiskit summary is JSON-safe and stores counts,
-circuit metadata samples, primitive name, execution sizing, Qiskit/Aer
-versions, seeds, transpilation settings, and compact `NoiseModel` diagnostics
-rather than raw `QuantumCircuit` objects.
+`SimulationResult.assessment` provides additive scientific semantics and is
+also derived when older serialized results are read. Common fields include:
+
+- `data_status`, `qber_defined`, nullable `qber_value`, `sample_size`, and
+  `qber_method` (`revealed_sample`, `full_sifted_key_diagnostic`, or
+  `unavailable`).
+- nullable `threshold`/`threshold_exceeded` and
+  `threshold_decision_source`.
+- `verification_status`, `key_status`, `rate_estimate_status`, nullable
+  `rate_estimate_bps`, and `rate_estimate_method`.
+- `reason_codes`, human-readable `reasons`, `assumptions`,
+  `security_scope="pedagogical_asymptotic_diagnostic"`, `finite_key=False`,
+  and `composable=False`.
+
+For E91 the assessment also stores nullable `observed_chsh_s`, total and
+per-term CHSH sample sizes, nullable `observed_threshold_exceeded`, and
+`conclusion_scope="diagnostic_fair_sampling_no_significance_test"`. These
+describe an observed, coincidence-post-selected statistic; they do not add a
+significance test or close Bell-test loopholes.
+
+`SimulationResult` stores the requested scenario, metrics, assessment,
+classical and decoy diagnostics, provenance, Qiskit execution summary, library
+version, and an optional event sample. Provenance includes the authoritative
+seed, requested-scenario digest, library version, RNG family, and an
+`effective_model` snapshot of the source/channel/detector/protocol choices
+actually used. Backend provenance cannot override reserved authoritative
+fields. The Qiskit summary is JSON-safe and stores counts, circuit metadata
+samples, primitive name, execution sizing, Qiskit/Aer versions, seeds,
+transpilation settings, and compact `NoiseModel` diagnostics rather than raw
+`QuantumCircuit` objects.
+
+Seed provenance separates the caller's `backend_initial_seed` from the
+scenario-bound `effective_scenario_seed`/`backend_seed`, derived preparation
+and measurement RNG seeds, and, when applicable, `primitive_seed`,
+`seed_simulator`, and `seed_transpiler`. They must not be collapsed into one
+generic seed because different execution paths consume them differently.
+
+The current provenance schema does not record the VCS commit/implementation
+digest or Python runtime version. A publication-grade reproduction bundle
+should therefore archive those alongside the serialized result and dependency
+lock.
 
 ## JSON
 
 Every public model supports `to_dict` and `from_dict`. `Scenario` and
 `SimulationResult` also support `to_json` and `from_json`.
+
+The current `SimulationResult` envelope is schema v2: `assessment` is a
+required, non-null object and is checked against the scenario, metrics,
+classical diagnostics, and Bell evidence when read. The reader also accepts
+schema-v1 envelopes (including envelopes with no explicit `schema_version`),
+derives their assessment, and records that derivation under
+`provenance.archive_load`. Archive loading preserves producer provenance; it
+does not backfill the current library version or a newly computed
+`effective_model` as though they had produced the historical run.
+
+For an actual legacy envelope, use `result.to_legacy_dict()` or
+`result.to_legacy_json()`. Those methods emit schema v1 without the v2-only
+`assessment` field, so the export is intentionally lossy. `to_dict()`,
+`summary()`, and the public JSON-object attributes return defensive nested
+`dict`/`list` copies; changing one returned object does not mutate the frozen
+result.
 
 ```python
 from qiskit_qkd import Metrics, Scenario, SimulationResult

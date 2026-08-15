@@ -32,7 +32,10 @@ depolarizing and phase-damping errors attach to that marker; Aer readout error
 attaches to measurement. Source preparation errors are sampled as logical BB84
 preparation flips, while coherent channel misalignment appears as explicit
 `ry`/`rz` gates. The backend records Qiskit/Aer versions, seeds, transpilation
-options, primitive names, counts, and a compact noise summary.
+options, primitive names, counts, and a compact noise summary. These fields,
+together with the requested-scenario digest and the effective model snapshot,
+are required context for reproducibility; the scenario seed alone is not a
+cross-version or cross-backend guarantee.
 
 BB84 now calls this backend only for pulses that were emitted by the source,
 kept at least one surviving photon after channel loss, and were assigned to a
@@ -117,7 +120,15 @@ Phase 4.1 adds a time-parameter layer above the static `Scenario`:
 The protocol runner is still given ordinary scenarios. Dynamic schedules are a
 configuration and analysis layer, not a hidden mutable clock inside BB84. This
 keeps time studies reproducible and makes later plotting straightforward:
-rows already contain `time_s`, effective parameter columns, and metrics.
+rows already contain `time_s`, effective parameter columns, and metrics. Each
+row is an independent static scenario resolved at that time. A time sweep does
+not simulate a continuous trajectory or preserve detector/channel memory
+between points.
+
+All sweep families retain both `requested_scenario_digest` (the base request)
+and `effective_scenario_digest` (the concrete scenario executed at that
+point), plus the effective-model provenance. These digests are expected to
+differ when an axis or schedule changes a parameter.
 
 Phase 4.1 deliberately does not add plotting dependencies, dashboards, per-pulse
 nonstationary detector state changes inside one BB84 run, or security claims for
@@ -195,9 +206,10 @@ evolution, wavelength-resolved Raman scattering, or dual-detector receiver
 imbalance. The implemented models are deliberately compact, auditable, and
 useful for parameter sweeps.
 
-## Phase 6.2: Decoy Security And PNS
+## Phase 6.2: Asymptotic Decoy Diagnostic And PNS
 
-Phase 6.2 adds the first real decoy-security layer:
+Phase 6.2 adds the first asymptotic decoy diagnostic layer (the legacy API
+retains `security` in field and function names):
 
 1. `estimate_vacuum_weak_decoy_security()` selects the highest positive
    intensity as signal, the next positive intensity as weak decoy, and the
@@ -225,7 +237,8 @@ composable security proof.
 Phase 7 adds the first entanglement-based protocol:
 
 1. `E91Config` stores the Bell state, Alice/Bob measurement angles, setting
-   pairs used for key, and signed CHSH terms.
+   pairs used for key, and a validated four-term 2x2 CHSH witness with local
+   bound 2.
 2. `EntangledPairSource` samples whether a Bell pair is emitted in a clock
    slot.
 3. `CircuitFactory.e91_bell_measure()` prepares the Bell pair, applies an
@@ -236,9 +249,12 @@ Phase 7 adds the first entanglement-based protocol:
 5. Alice and Bob use independent threshold-detector instances, even when they
    share the same `DetectorConfig`.
 6. Coincident detections are grouped by public setting pair. Key pairs produce
-   E91 QBER; CHSH pairs produce `Metrics.chsh_s`.
-7. `SimulationResult.bell` and `analysis.bell_rows_from_result()` expose flat
-   setting rows for plotting correlations and Bell violation.
+   E91 QBER; CHSH pairs produce the observed `Metrics.chsh_s` plus sample sizes
+   in `SimulationResult.assessment`.
+7. `SimulationResult.bell` exposes the classical bound, nullable observed
+   threshold crossing, per-term sample sizes, and a lossy schema-v1 boolean
+   projection; `analysis.bell_rows_from_result()` exposes flat setting rows for
+   plotting correlations.
 
 E91 reuses the same Aer boundary as BB84. Depolarizing, phase damping, and
 readout errors are attached through `AerNoiseModelAdapter`; loss, no-clicks,
@@ -252,7 +268,10 @@ The first E91 implementation models one explicit quantum channel arm toward
 Bob and keeps Alice local to the source. This is intentionally compact and
 auditable. Dual-arm asymmetric links, SPDC multi-pair emission, loophole-free
 Bell analysis, quantum PDL/loss channels for entangled states, and
-device-independent finite-key security remain future work.
+device-independent finite-key analysis remain future work. In particular,
+`S > 2` is evaluated on detected coincidences under a fair-sampling
+interpretation. The implementation performs no significance test or
+confidence interval and closes neither the detection nor locality loophole.
 
 ## Phase 8: Optical Channel Families
 
@@ -326,6 +345,43 @@ simulator can inspect for validation. Hidden event fields such as
 protocol must not depend on Bob knowing which individual clicks were dark
 counts.
 
+When `qber_sample_fraction=0`, no public sample is revealed. The current
+pipeline then uses the complete sifted strings as a simulator-only diagnostic
+(`qber_method="full_sifted_key_diagnostic"`). That oracle value is useful for
+validation, but it must not be described as knowledge obtained by Alice and
+Bob in an executable protocol.
+
+## Result Semantics And Provenance
+
+`SimulationResult.assessment` is the interpretation layer; legacy aggregate
+fields remain serialized for compatibility. In particular:
+
+- `metrics.qber == 0.0` with no sifted bits is a legacy numeric placeholder.
+  `assessment.qber_defined=False`, `qber_value=None`, and
+  `data_status="insufficient_data"` carry the scientific meaning.
+- `metrics.abort`, the classical sample-threshold decision,
+  `verification_status`, `key_status`, and `rate_estimate_status` are distinct
+  states. A positive rate estimate can be inconsistent with the eventual key
+  status and is labelled as such.
+- `security_scope="pedagogical_asymptotic_diagnostic"`, `finite_key=False`,
+  and `composable=False` apply to the rate interpretation. The result is not a
+  real-system security guarantee.
+- E91 adds `observed_chsh_s`, `chsh_sample_size`, per-term sample sizes,
+  `observed_threshold_exceeded`, and
+  `conclusion_scope="diagnostic_fair_sampling_no_significance_test"`.
+
+Provenance separates requested configuration from execution. The scenario and
+its digest preserve intent; `provenance.effective_model` records the source,
+channel, detector, protocol, and parameter applicability actually used. Backend,
+primitive, library, Qiskit/Aer versions and all relevant execution
+seeds complete the reproducibility record. Consumers should compare the
+requested digest, effective snapshot, and execution metadata, not only the
+central seed. The effective snapshot identifies consumed/ignored parameter
+names and concrete models; parameter values remain in the normalized scenario.
+The current schema does not include a VCS/implementation digest or Python
+runtime version, so those must be archived separately for long-term exact
+reproduction.
+
 ## Data Flow
 
 1. `Scenario` stores validated parameters, optional dynamic schedules, and the
@@ -353,8 +409,8 @@ counts.
 11. `Metrics` aggregates counters, QBER, loss, gain, rates, abort status, and
     Eve diagnostics.
 12. `SimulationResult` returns metrics, decoy statistics, classical
-    diagnostics, provenance, Qiskit execution metadata, and the configured
-    event sample.
+    diagnostics, `assessment`, provenance (including the effective model),
+    Qiskit execution metadata, and the configured event sample.
 13. Analysis helpers such as `ChannelCharacterizer` and `sweep_bb84_time()`
     collect JSON-safe rows for later plotting or comparison.
 

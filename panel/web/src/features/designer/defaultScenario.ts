@@ -1,5 +1,11 @@
 import type { ScenarioPayload } from '@/api/client'
 
+// Minimal, explicit offline bootstrap.  A loaded catalog's
+// ``default_scenario`` is preferred by consumers; this object is kept only
+// for first render/offline operation and is parity-tested against the
+// versioned backend metadata contract.
+export const DEFAULT_SCENARIO_METADATA_VERSION = 1
+
 export const defaultScenario: ScenarioPayload = {
   schema_version: 1,
   pulses: 1024,
@@ -94,12 +100,7 @@ export const defaultScenario: ScenarioPayload = {
     chsh_estimation_enabled: true,
   },
   dynamic: {
-    parameter_schedules: [
-      {
-        target: 'channel.distance_km',
-        profile: { kind: 'constant', start_s: 0, end_s: 0.001, value: 25 },
-      },
-    ],
+    parameter_schedules: [],
   },
   event_sample_size: 200,
   store_full_event_log: false,

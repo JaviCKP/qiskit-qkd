@@ -1,7 +1,7 @@
 # Development
 
-This repository is in Phase 8. The package has a validated domain model, a
-minimal BB84 circuit path backed by Qiskit primitives, and an event-level
+This repository is in Phase 9. The package has a type/range-validated domain
+schema and a minimal BB84 circuit path backed by Qiskit primitives, plus an event-level
 physical layer for fiber loss, detector efficiency, dark counts, timing gates,
 dead time, afterpulsing, and distance sweeps. It also has pedagogical
 classical post-processing diagnostics for BB84. Phase 4 adds Qiskit Aer
@@ -14,7 +14,7 @@ Phase 5 adds explicit BB84 Eve models with traceable event and metric
 diagnostics. Phase 6 adds weak-coherent decoy-state source infrastructure and
 per-intensity BB84 statistics. Phase 6.1 adds first-order fiber impairments:
 PMD, chromatic dispersion, polarization-dependent loss, and Raman crosstalk.
-Phase 6.2 adds asymptotic vacuum+weak decoy security estimates and a
+Phase 6.2 adds asymptotic vacuum+weak decoy diagnostic estimates and a
 photon-number-splitting Eve model. Phase 7 adds entanglement-based E91 with
 Bell-pair circuits, CHSH diagnostics, source-pair imperfections, and flat Bell
 analysis rows. Phase 8 adds non-fiber optical channel models for deep-space,
@@ -68,6 +68,11 @@ Phase 2 includes:
 Phase 2 does not include fiber loss, dark counts, advanced detector behavior,
 Eve, decoy BB84, E91, dashboards, CLI commands, Aer noise adapters, or advanced
 transpilation.
+
+The numeric QBER and key-rate fields introduced here are legacy-compatible
+diagnostics. In current results, `SimulationResult.assessment` distinguishes
+undefined QBER from an observed zero and labels the rate scope as pedagogical
+and asymptotic.
 
 ## Phase 3 Scope
 
@@ -130,8 +135,8 @@ current pedagogical key-rate estimate into a more explicit BB84
 post-processing pipeline while still avoiding claims of industrial or
 composable security.
 
-Phase 3 still computes QBER and a simplified secret-key rate from aggregate
-counters. Phase 3.6 additionally makes the intermediate classical steps
+Phase 3 still computes QBER and a simplified pedagogical asymptotic key rate
+from aggregate counters. Phase 3.6 additionally makes the intermediate classical steps
 visible through `SimulationResult.classical`:
 
 - Build aligned Alice and Bob sifted-key strings from detected same-basis slots.
@@ -149,6 +154,12 @@ visible through `SimulationResult.classical`:
   down to a target length derived from QBER and `leak_ec`.
 - Store only key material needed for tests or small examples; large simulations
   should keep aggregate lengths and diagnostics instead of dumping full secrets.
+
+When the configured sample fraction is zero, the implementation reveals no
+sample but uses the full sifted strings as a simulator-only diagnostic. It is
+labelled `qber_method="full_sifted_key_diagnostic"`, not as protocol knowledge.
+The aggregate `metrics.abort`, classical threshold outcome, verification,
+key-status, and rate-estimate status remain separate decisions.
 
 Phase 3.6 is explicit about limits. Pedagogical block-parity reconciliation is
 useful for teaching and tests, but it is not Cascade, LDPC, finite-key
@@ -305,8 +316,8 @@ analysis, or composable security proofs.
 
 ## Phase 6.2 Scope
 
-Phase 6.2 is the decoy-security and PNS phase. Its purpose is to move from
-observable decoy statistics to a useful asymptotic security diagnostic while
+Phase 6.2 is the decoy-diagnostic and PNS phase. Its purpose is to move from
+observable decoy statistics to a useful asymptotic rate diagnostic while
 keeping finite-key claims out of scope.
 
 Phase 6.2 includes:
@@ -317,11 +328,13 @@ Phase 6.2 includes:
   `Q1`, and upper bound on single-photon error rate `e1`.
 - A decoy secret-key-rate diagnostic using the observed basis-sift factor and
   the configured error-correction efficiency.
-- `SimulationResult.decoy["security"]` with flat JSON-safe estimator fields.
+- `SimulationResult.decoy["security"]` with flat JSON-safe estimator fields;
+  `security` is a retained legacy key, not a formal-proof claim.
 - `PostProcessingConfig.decoy_security_estimation_enabled` and
-  `decoy_security_method` for switching decoy security diagnostics on or off.
-- `analysis.decoy_rows_from_result()` for flat plot-ready intensity/security
-  rows.
+  `decoy_security_method` (legacy names) for switching asymptotic decoy
+  diagnostics on or off.
+- `analysis.decoy_rows_from_result()` for flat plot-ready intensity rows and
+  the legacy-named `security` diagnostic row.
 - `PhotonNumberSplittingEve`, configured through
   `EveConfig(kind="photon_number_splitting")` or `kind="pns"`.
 - PNS splitting of multi-photon pulses without introducing BB84 basis errors.
@@ -350,7 +363,8 @@ Phase 7 includes:
 - `QiskitSamplerBackend.measure_e91_batch()` returning reproducible Alice/Bob
   measurement pairs.
 - `E91Protocol` with Bob-arm channel survival, timing gates, independent Alice
-  and Bob threshold detectors, coincidence filtering, key QBER, and CHSH `S`.
+  and Bob threshold detectors, coincidence filtering, key QBER, and observed
+  CHSH `S` with assessment sample sizes.
 - Source-pair preparation imperfection using random Pauli errors on Bob's
   qubit, controlled by `SourceConfig.preparation_error_probability`.
 - Reuse of channel coherent rotations, Aer depolarizing/phase-damping/readout
@@ -363,6 +377,10 @@ Phase 7 deliberately does not include loophole-free Bell-test analysis,
 device-independent finite-key proofs, dual-arm asymmetric channel configs,
 SPDC multi-pair statistics, entanglement swapping, repeaters, or E91-specific
 side-channel attacks.
+
+The CHSH conclusion is a detected-coincidence, fair-sampling diagnostic. There
+is no significance test or confidence interval, and neither detection nor
+locality loopholes are closed.
 
 ## Phase 8 Scope
 
@@ -407,8 +425,11 @@ Phase 9 includes:
   sifted fraction, timing-discard fraction, QBER margin, CHSH margin, and
   privacy efficiency.
 - `analysis.summarize_metric_rows()` for repeated-seed aggregation with mean,
-  standard deviation, min, max, p05, p95, abort fraction, and secure fraction.
-- `analysis.secure_distance_limit()` as a compact distance-limit diagnostic.
+  standard deviation, min, max, p05, p95, per-metric finite counts, and
+  separate legacy-abort versus authoritative threshold-decision fractions.
+- `analysis.secure_distance_limit()` (legacy name) as a sampled-grid,
+  assessment-gated pedagogical-rate distance diagnostic, not a certified
+  range. A positive legacy rate and `abort=False` alone are insufficient.
 - `qiskit_qkd.visualization` generic plotters for metric sweeps, threshold
   curves, heatmaps, and stacked count budgets.
 - Domain recipes for BB84 distance summaries, channel comparison, decoy
@@ -422,7 +443,8 @@ APIs later.
 
 ## Environment
 
-Use Python 3.11 or newer. Python 3.12 is a good default for local development.
+Use Python 3.12 or newer, matching the package metadata. Python 3.12 is a good
+default for local development.
 
 Create and activate a virtual environment if the project is not already running
 inside one:

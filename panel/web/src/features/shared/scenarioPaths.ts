@@ -1,13 +1,15 @@
-export function isRecord(value: unknown): value is Record<string, unknown> {
+import type { JsonObject } from '@/api/client'
+
+export function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
+  return structuredClone(value)
 }
 
 export function readTarget(
-  scenario: Record<string, unknown>,
+  scenario: JsonObject,
   target: string,
 ): unknown {
   const [section, field] = target.split('.')
@@ -24,17 +26,17 @@ export function readTarget(
   return sectionValue[field]
 }
 
-export function writeTarget(
-  scenario: Record<string, unknown>,
+export function writeTarget<T extends JsonObject>(
+  scenario: T,
   target: string,
   value: unknown,
-): Record<string, unknown> {
+): T {
   const [section, field] = target.split('.')
   if (!section || !field) {
     return scenario
   }
   if (section === 'scenario') {
-    return { ...scenario, [field]: value }
+    return { ...scenario, [field]: value } as T
   }
   const sectionValue = scenario[section]
   if (!isRecord(sectionValue)) {
@@ -46,5 +48,5 @@ export function writeTarget(
       ...sectionValue,
       [field]: value,
     },
-  }
+  } as T
 }

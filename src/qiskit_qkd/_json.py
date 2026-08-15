@@ -10,9 +10,20 @@ from typing import Any, TypeAlias, cast
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 JSONObject: TypeAlias = dict[str, JSONValue]
+DEFAULT_MAX_JSON_DEPTH = 128
 
 
-def normalize_json_value(value: Any, *, path: str = "value") -> JSONValue:
+def normalize_json_value(
+    value: Any,
+    *,
+    path: str = "value",
+    max_depth: int = DEFAULT_MAX_JSON_DEPTH,
+    _depth: int = 0,
+) -> JSONValue:
+    if _depth > max_depth:
+        raise ValueError(
+            f"{path} exceeds the maximum JSON nesting depth of {max_depth}"
+        )
     if value is None or isinstance(value, str | bool):
         return value
     if isinstance(value, int) and not isinstance(value, bool):
@@ -26,11 +37,21 @@ def normalize_json_value(value: Any, *, path: str = "value") -> JSONValue:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise TypeError(f"{path} keys must be strings")
-            normalized[key] = normalize_json_value(item, path=f"{path}.{key}")
+            normalized[key] = normalize_json_value(
+                item,
+                path=f"{path}.{key}",
+                max_depth=max_depth,
+                _depth=_depth + 1,
+            )
         return normalized
     if isinstance(value, list | tuple):
         return [
-            normalize_json_value(item, path=f"{path}[{index}]")
+            normalize_json_value(
+                item,
+                path=f"{path}[{index}]",
+                max_depth=max_depth,
+                _depth=_depth + 1,
+            )
             for index, item in enumerate(value)
         ]
     raise TypeError(f"{path} is not JSON serializable")
@@ -40,8 +61,9 @@ def normalize_json_object(
     value: Mapping[str, Any],
     *,
     path: str = "value",
+    max_depth: int = DEFAULT_MAX_JSON_DEPTH,
 ) -> JSONObject:
-    normalized = normalize_json_value(value, path=path)
+    normalized = normalize_json_value(value, path=path, max_depth=max_depth)
     if not isinstance(normalized, dict):
         raise TypeError(f"{path} must be a JSON object")
     return normalized

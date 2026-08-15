@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from importlib import metadata
+from numbers import Complex, Integral, Real
 from typing import Any
 
 import qiskit
@@ -19,6 +22,7 @@ from qiskit_qkd._validation import (
     require_positive_int,
     require_probability,
 )
+from qiskit_qkd.provenance import backend_provenance
 from qiskit_qkd.qiskit_integration import CircuitFactory, TranspilationOptions
 from qiskit_qkd.qiskit_integration.transpilation import (
     disabled_transpilation_summary,
@@ -27,10 +31,9 @@ from qiskit_qkd.qiskit_integration.transpilation import (
 
 def _qiskit_aer_version() -> str | None:
     try:
-        import qiskit_aer  # type: ignore[import-not-found]
-    except ImportError:
+        return metadata.version("qiskit-aer")
+    except metadata.PackageNotFoundError:
         return None
-    return str(qiskit_aer.__version__)
 
 
 def scenario_requires_aer_noise(scenario: Any) -> bool:
@@ -72,6 +75,7 @@ class QiskitSamplerBackend:
         shots_per_circuit: int = 1,
         max_circuits_per_job: int = 256,
         max_recorded_results: int = 16,
+        max_statevector_cache_entries: int = 128,
         noise_model: Any | None = None,
         noise_summary: Mapping[str, Any] | None = None,
         transpilation: TranspilationOptions | None = None,
@@ -80,6 +84,8 @@ class QiskitSamplerBackend:
         channel_rotation_z_rad: float = 0.0,
     ) -> None:
         self.seed = None if seed is None else require_non_negative_int("seed", seed)
+        self.initial_seed = self.seed
+        self.effective_scenario_seed = self.seed
         self.seed_simulator = (
             None
             if seed_simulator is None
@@ -97,8 +103,14 @@ class QiskitSamplerBackend:
             "max_recorded_results",
             max_recorded_results,
         )
+        self.max_statevector_cache_entries = require_non_negative_int(
+            "max_statevector_cache_entries",
+            max_statevector_cache_entries,
+        )
         self.noise_model = noise_model
-        self.noise_summary = dict(noise_summary) if noise_summary is not None else None
+        self.noise_summary = (
+            dict(noise_summary) if noise_summary is not None else None
+        )
         self.transpilation = transpilation
         self.preparation_error_probability = require_probability(
             "preparation_error_probability",
@@ -120,7 +132,15 @@ class QiskitSamplerBackend:
         )
         self._transpilation_backend: Any | None = None
         self._sampler_provided = sampler is not None
+        self.primitive_seed = (
+            None
+            if self._sampler_provided
+            else self.seed_simulator if self.seed_simulator is not None else self.seed
+        )
         self.sampler = sampler or self._default_sampler()
+        self._statevector_cache: OrderedDict[tuple[Any, ...], dict[str, float]] = (
+            OrderedDict()
+        )
         self.reset_execution_summary()
 
     def reset_execution_summary(self) -> None:
@@ -133,22 +153,90 @@ class QiskitSamplerBackend:
         self.e91_distribution_shots_per_circuit: int | None = None
         self.e91_noiseless_statevector_used = False
         self.bb84_noiseless_statevector_used = False
+        self.e91_omitted_circuit_count = 0
+        self.constructed_circuit_count = 0
+        self.statevector_cache_hits = 0
+        self.statevector_cache_misses = 0
+        self.statevector_cache_evictions = 0
+        self._statevector_cache.clear()
         self._effective_transpilation: TranspilationOptions | None = None
 
-    def measure_bb84(self, bit: int, alice_basis: str, bob_basis: str) -> int:
+    def measure_bb84(
+        self,
+        bit: int,
+        alice_basis: str,
+        bob_basis: str,
+        *,
+        cancellation_check: Callable[[], None] | None = None,
+    ) -> int:
         """Measure one BB84 pulse and return Bob's classical bit."""
 
-        return self.measure_bb84_batch([(bit, alice_basis, bob_basis)])[0]
+        return self.measure_bb84_batch(
+            [(bit, alice_basis, bob_basis)],
+            cancellation_check=cancellation_check,
+        )[0]
 
     def measure_bb84_batch(
         self,
         rounds: Sequence[tuple[int, str, str]],
+        *,
+        cancellation_check: Callable[[], None] | None = None,
     ) -> tuple[int, ...]:
         """Measure BB84 pulses in primitive jobs and return Bob's bits in order."""
 
         measured_bits: list[int] = []
         for start in range(0, len(rounds), self.max_circuits_per_job):
+            if cancellation_check is not None:
+                cancellation_check()
             batch = rounds[start : start + self.max_circuits_per_job]
+            if self._can_sample_noiseless_statevector():
+                specifications = [
+                    (
+                        bit,
+                        alice_basis,
+                        bob_basis,
+                        self._sample_preparation_error(),
+                    )
+                    for bit, alice_basis, bob_basis in batch
+                ]
+                circuits_by_specification: dict[
+                    tuple[int, str, str, bool],
+                    tuple[QuantumCircuit, dict[str, float]],
+                ] = {}
+                for specification in specifications:
+                    cached = circuits_by_specification.get(specification)
+                    if cached is None:
+                        bit, alice_basis, bob_basis, preparation_bit_flip = (
+                            specification
+                        )
+                        circuit = CircuitFactory.bb84_prepare_measure(
+                            bit,
+                            alice_basis,
+                            bob_basis,
+                            preparation_bit_flip=preparation_bit_flip,
+                            channel_rotation_y_rad=self.channel_rotation_y_rad,
+                            channel_rotation_z_rad=self.channel_rotation_z_rad,
+                        )
+                        probabilities = self._statevector_probabilities(circuit)
+                        circuits_by_specification[specification] = (
+                            circuit,
+                            probabilities,
+                        )
+                        self.constructed_circuit_count += 1
+                    else:
+                        circuit, probabilities = cached
+                        self.statevector_cache_hits += 1
+                    counts = self._sample_probabilities_counts(
+                        probabilities,
+                        outcome_is_valid=lambda outcome: outcome in {"0", "1"},
+                        expected="single-bit",
+                    )
+                    self.bb84_noiseless_statevector_used = True
+                    self._record_execution(circuit, counts)
+                    measured_bits.append(self._bit_from_counts(counts))
+                if cancellation_check is not None:
+                    cancellation_check()
+                continue
             circuits = [
                 CircuitFactory.bb84_prepare_measure(
                     bit,
@@ -160,33 +248,87 @@ class QiskitSamplerBackend:
                 )
                 for bit, alice_basis, bob_basis in batch
             ]
+            self.constructed_circuit_count += len(circuits)
             if not circuits:
+                if cancellation_check is not None:
+                    cancellation_check()
                 continue
             circuits = self._prepare_circuits(circuits)
-            if self._can_sample_noiseless_statevector():
-                for circuit in circuits:
-                    counts = self._sample_bb84_statevector_counts(circuit)
-                    self.bb84_noiseless_statevector_used = True
-                    self._record_execution(circuit, counts)
-                    measured_bits.append(self._bit_from_counts(counts))
-                continue
             job = self.sampler.run(circuits, shots=self.shots_per_circuit)
             result = job.result()
             for circuit, pub_result in zip(circuits, result, strict=True):
                 counts = dict(pub_result.data.c.get_counts())
                 self._record_execution(circuit, counts)
                 measured_bits.append(self._sample_bit_from_counts(counts))
+            if cancellation_check is not None:
+                cancellation_check()
         return tuple(measured_bits)
 
     def measure_e91_batch(
         self,
         rounds: Sequence[tuple[float, float, str]],
+        *,
+        cancellation_check: Callable[[], None] | None = None,
     ) -> tuple[tuple[int, int], ...]:
         """Measure E91 Bell pairs and return Alice/Bob bits in order."""
 
         measured_pairs: list[tuple[int, int]] = []
         for start in range(0, len(rounds), self.max_circuits_per_job):
+            if cancellation_check is not None:
+                cancellation_check()
             batch = rounds[start : start + self.max_circuits_per_job]
+            if self._can_sample_noiseless_statevector():
+                specifications = [
+                    (
+                        alice_angle_rad,
+                        bob_angle_rad,
+                        bell_state,
+                        self._sample_source_pair_error(),
+                    )
+                    for alice_angle_rad, bob_angle_rad, bell_state in batch
+                ]
+                circuits_by_specification: dict[
+                    tuple[float, float, str, str | None],
+                    tuple[QuantumCircuit, dict[str, float]],
+                ] = {}
+                for specification in specifications:
+                    cached = circuits_by_specification.get(specification)
+                    if cached is None:
+                        (
+                            alice_angle_rad,
+                            bob_angle_rad,
+                            bell_state,
+                            source_pair_error,
+                        ) = specification
+                        circuit = CircuitFactory.e91_bell_measure(
+                            bell_state=bell_state,
+                            alice_angle_rad=alice_angle_rad,
+                            bob_angle_rad=bob_angle_rad,
+                            source_pair_error=source_pair_error,
+                            channel_rotation_y_rad=self.channel_rotation_y_rad,
+                            channel_rotation_z_rad=self.channel_rotation_z_rad,
+                        )
+                        probabilities = self._statevector_probabilities(circuit)
+                        circuits_by_specification[specification] = (
+                            circuit,
+                            probabilities,
+                        )
+                        self.constructed_circuit_count += 1
+                    else:
+                        circuit, probabilities = cached
+                        self.statevector_cache_hits += 1
+                    counts = self._sample_probabilities_counts(
+                        probabilities,
+                        outcome_is_valid=lambda outcome: len(outcome) == 2
+                        and all(bit in {"0", "1"} for bit in outcome),
+                        expected="two-bit",
+                    )
+                    self.e91_noiseless_statevector_used = True
+                    self._record_execution(circuit, counts)
+                    measured_pairs.append(self._bit_pair_from_counts(counts))
+                if cancellation_check is not None:
+                    cancellation_check()
+                continue
             circuits = [
                 CircuitFactory.e91_bell_measure(
                     bell_state=bell_state,
@@ -198,16 +340,12 @@ class QiskitSamplerBackend:
                 )
                 for alice_angle_rad, bob_angle_rad, bell_state in batch
             ]
+            self.constructed_circuit_count += len(circuits)
             if not circuits:
+                if cancellation_check is not None:
+                    cancellation_check()
                 continue
             circuits = self._prepare_circuits(circuits)
-            if self._can_sample_noiseless_statevector():
-                for circuit in circuits:
-                    counts = self._sample_e91_statevector_counts(circuit)
-                    self.e91_noiseless_statevector_used = True
-                    self._record_execution(circuit, counts)
-                    measured_pairs.append(self._bit_pair_from_counts(counts))
-                continue
             e91_shots = max(self.shots_per_circuit, 64)
             self.e91_distribution_shots_per_circuit = e91_shots
             job = self.sampler.run(circuits, shots=e91_shots)
@@ -216,25 +354,132 @@ class QiskitSamplerBackend:
                 counts = dict(pub_result.data.c.get_counts())
                 self._record_execution(circuit, counts)
                 measured_pairs.append(self._sample_bit_pair_from_counts(counts))
+            if cancellation_check is not None:
+                cancellation_check()
+        return tuple(measured_pairs)
+
+    def can_omit_e91_unused_results(self) -> bool:
+        """Return whether selected E91 rounds can skip circuit evaluation."""
+
+        return self._can_sample_noiseless_statevector()
+
+    def measure_e91_batch_selected(
+        self,
+        rounds: Sequence[tuple[float, float, str]],
+        required: Sequence[bool],
+        *,
+        cancellation_check: Callable[[], None] | None = None,
+    ) -> tuple[tuple[int, int] | None, ...]:
+        """Measure selected noiseless E91 rounds while preserving both RNG streams."""
+
+        if len(rounds) != len(required):
+            raise ValueError(
+                "E91 selection length mismatch: "
+                f"got {len(required)} flags for {len(rounds)} rounds",
+            )
+        if not self.can_omit_e91_unused_results():
+            raise ValueError(
+                "selected E91 measurement requires the noiseless Statevector path",
+            )
+        specifications = [
+            (
+                alice_angle_rad,
+                bob_angle_rad,
+                bell_state,
+                self._sample_source_pair_error(),
+            )
+            for alice_angle_rad, bob_angle_rad, bell_state in rounds
+        ]
+        circuits_by_specification: dict[
+            tuple[float, float, str, str | None],
+            tuple[QuantumCircuit, dict[str, float]],
+        ] = {}
+        measured_pairs: list[tuple[int, int] | None] = []
+        for specification, is_required in zip(
+            specifications,
+            required,
+            strict=True,
+        ):
+            if cancellation_check is not None:
+                cancellation_check()
+            if not is_required:
+                self._measurement_rng.random()
+                self.e91_omitted_circuit_count += 1
+                measured_pairs.append(None)
+                continue
+            cached = circuits_by_specification.get(specification)
+            if cached is None:
+                (
+                    alice_angle_rad,
+                    bob_angle_rad,
+                    bell_state,
+                    source_pair_error,
+                ) = specification
+                circuit = CircuitFactory.e91_bell_measure(
+                    bell_state=bell_state,
+                    alice_angle_rad=alice_angle_rad,
+                    bob_angle_rad=bob_angle_rad,
+                    source_pair_error=source_pair_error,
+                    channel_rotation_y_rad=self.channel_rotation_y_rad,
+                    channel_rotation_z_rad=self.channel_rotation_z_rad,
+                )
+                probabilities = self._statevector_probabilities(circuit)
+                circuits_by_specification[specification] = (
+                    circuit,
+                    probabilities,
+                )
+                self.constructed_circuit_count += 1
+            else:
+                circuit, probabilities = cached
+                self.statevector_cache_hits += 1
+            counts = self._sample_probabilities_counts(
+                probabilities,
+                outcome_is_valid=lambda outcome: len(outcome) == 2
+                and all(bit in {"0", "1"} for bit in outcome),
+                expected="two-bit",
+            )
+            self.e91_noiseless_statevector_used = True
+            self._record_execution(circuit, counts)
+            measured_pairs.append(self._bit_pair_from_counts(counts))
+        if cancellation_check is not None:
+            cancellation_check()
         return tuple(measured_pairs)
 
     def provenance(self) -> JSONObject:
         """Return JSON-safe execution provenance for simulation results."""
 
-        provenance: JSONObject = {
-            "backend": type(self).__name__,
+        details: JSONObject = {
             "primitive": type(self.sampler).__name__,
             "shots_per_circuit": self.shots_per_circuit,
             "max_circuits_per_job": self.max_circuits_per_job,
             "max_recorded_results": self.max_recorded_results,
+            "max_statevector_cache_entries": self.max_statevector_cache_entries,
             "qiskit_version": qiskit.__version__,
             "qiskit_aer_version": _qiskit_aer_version(),
         }
-        if self.seed is not None:
-            provenance["backend_seed"] = self.seed
+        if self.effective_scenario_seed is not None:
+            details["backend_seed"] = self.effective_scenario_seed
+            details["effective_scenario_seed"] = self.effective_scenario_seed
+            details["preparation_rng_seed"] = (
+                self.effective_scenario_seed + 0x51A7E
+            )
+            details["measurement_rng_seed"] = (
+                self.effective_scenario_seed + 0xE91
+            )
+        if self.initial_seed is not None:
+            details["backend_initial_seed"] = self.initial_seed
+        if self.primitive_seed is not None:
+            details["primitive_seed"] = self.primitive_seed
         if self.seed_simulator is not None:
-            provenance["seed_simulator"] = self.seed_simulator
-        return provenance
+            details["seed_simulator"] = self.seed_simulator
+        if self.e91_omitted_circuit_count:
+            details["e91_omitted_circuit_count"] = (
+                self.e91_omitted_circuit_count
+            )
+            details["e91_omission_mode"] = (
+                "noiseless_unobserved_round_rng_compatible"
+            )
+        return backend_provenance(self, details)
 
     def configure_from_scenario(self, scenario: Any) -> None:
         """Bind scenario-level source/channel quantum imperfections."""
@@ -252,6 +497,10 @@ class QiskitSamplerBackend:
             "channel_rotation_z_rad",
             scenario.channel.polarization_rotation_z_rad,
         )
+        self.effective_scenario_seed = require_non_negative_int(
+            "scenario.seed",
+            scenario.seed,
+        )
         self._preparation_rng = random.Random(scenario.seed + 0x51A7E)
         self._measurement_rng = random.Random(scenario.seed + 0xE91)
 
@@ -263,6 +512,7 @@ class QiskitSamplerBackend:
         summary.update(
             {
                 "circuit_count": self.circuit_count,
+                "constructed_circuit_count": self.constructed_circuit_count,
                 "recorded_circuit_count": len(self.last_circuits),
                 "counts_sample": self.last_counts[:sample_size],
                 "circuit_metadata_sample": [
@@ -272,6 +522,10 @@ class QiskitSamplerBackend:
                 "counts_by_outcome": dict(self.counts_by_outcome),
                 "noise_model": self._noise_model_summary(),
                 "transpilation": transpilation,
+                "statevector_cache_hits": self.statevector_cache_hits,
+                "statevector_cache_misses": self.statevector_cache_misses,
+                "statevector_cache_evictions": self.statevector_cache_evictions,
+                "statevector_cache_size": len(self._statevector_cache),
             },
         )
         if self.e91_distribution_shots_per_circuit is not None:
@@ -466,36 +720,128 @@ class QiskitSamplerBackend:
         self,
         circuit: QuantumCircuit,
     ) -> dict[str, int]:
-        unitary = circuit.remove_final_measurements(inplace=False)
-        probabilities = Statevector.from_instruction(unitary).probabilities_dict()
-        sample = self._measurement_rng.random()
-        cumulative = 0.0
-        for outcome, probability in sorted(probabilities.items()):
-            if outcome not in {"0", "1"}:
-                raise ValueError(
-                    f"Expected single-bit statevector outcome, got {outcome!r}",
-                )
-            cumulative += probability
-            if sample < cumulative:
-                return {outcome: 1}
-        outcome = sorted(probabilities)[-1]
-        return {outcome: 1}
+        return self._sample_statevector_counts(
+            circuit,
+            outcome_is_valid=lambda outcome: outcome in {"0", "1"},
+            expected="single-bit",
+        )
 
     def _sample_e91_statevector_counts(
         self,
         circuit: QuantumCircuit,
     ) -> dict[str, int]:
-        unitary = circuit.remove_final_measurements(inplace=False)
-        probabilities = Statevector.from_instruction(unitary).probabilities_dict()
+        return self._sample_statevector_counts(
+            circuit,
+            outcome_is_valid=lambda outcome: len(outcome) == 2
+            and all(bit in {"0", "1"} for bit in outcome),
+            expected="two-bit",
+        )
+
+    def _sample_statevector_counts(
+        self,
+        circuit: QuantumCircuit,
+        *,
+        outcome_is_valid: Callable[[str], bool],
+        expected: str,
+    ) -> dict[str, int]:
+        return self._sample_probabilities_counts(
+            self._statevector_probabilities(circuit),
+            outcome_is_valid=outcome_is_valid,
+            expected=expected,
+        )
+
+    def _sample_probabilities_counts(
+        self,
+        probabilities: Mapping[str, float],
+        *,
+        outcome_is_valid: Callable[[str], bool],
+        expected: str,
+    ) -> dict[str, int]:
         sample = self._measurement_rng.random()
         cumulative = 0.0
-        for outcome, probability in sorted(probabilities.items()):
-            if len(outcome) != 2 or any(bit not in {"0", "1"} for bit in outcome):
+        sorted_outcomes = sorted(probabilities.items())
+        for outcome, probability in sorted_outcomes:
+            if not outcome_is_valid(outcome):
                 raise ValueError(
-                    f"Expected two-bit statevector outcome, got {outcome!r}",
+                    f"Expected {expected} statevector outcome, got {outcome!r}",
                 )
             cumulative += probability
             if sample < cumulative:
                 return {outcome: 1}
-        outcome = sorted(probabilities)[-1]
+        outcome = sorted_outcomes[-1][0]
         return {outcome: 1}
+
+    def _statevector_probabilities(
+        self,
+        circuit: QuantumCircuit,
+    ) -> dict[str, float]:
+        unitary = circuit.remove_final_measurements(inplace=False)
+        cache_key = _circuit_cache_key(unitary)
+        if cache_key is not None and cache_key in self._statevector_cache:
+            self.statevector_cache_hits += 1
+            self._statevector_cache.move_to_end(cache_key)
+            return self._statevector_cache[cache_key]
+
+        self.statevector_cache_misses += 1
+        probabilities = Statevector.from_instruction(unitary).probabilities_dict()
+        if cache_key is None or self.max_statevector_cache_entries == 0:
+            return probabilities
+        if len(self._statevector_cache) >= self.max_statevector_cache_entries:
+            self._statevector_cache.popitem(last=False)
+            self.statevector_cache_evictions += 1
+        self._statevector_cache[cache_key] = probabilities
+        return probabilities
+
+
+def _circuit_cache_key(circuit: QuantumCircuit) -> tuple[Any, ...] | None:
+    global_phase = _freeze_circuit_parameter(circuit.global_phase)
+    if global_phase is None:
+        return None
+    instructions: list[tuple[Any, ...]] = []
+    for instruction in circuit.data:
+        operation = instruction.operation
+        if getattr(operation, "condition", None) is not None:
+            return None
+        parameters: list[tuple[Any, ...]] = []
+        for parameter in operation.params:
+            frozen = _freeze_circuit_parameter(parameter)
+            if frozen is None:
+                return None
+            parameters.append(frozen)
+        instructions.append(
+            (
+                type(operation).__module__,
+                type(operation).__qualname__,
+                operation.name,
+                tuple(parameters),
+                tuple(circuit.find_bit(bit).index for bit in instruction.qubits),
+                tuple(circuit.find_bit(bit).index for bit in instruction.clbits),
+            ),
+        )
+    return (
+        circuit.num_qubits,
+        circuit.num_clbits,
+        global_phase,
+        tuple(instructions),
+    )
+
+
+def _freeze_circuit_parameter(value: Any) -> tuple[Any, ...] | None:
+    if value is None or isinstance(value, str):
+        return (type(value).__name__, value)
+    if isinstance(value, bool):
+        return ("bool", value)
+    if isinstance(value, Integral):
+        return ("int", int(value))
+    if isinstance(value, Real):
+        return ("float", float(value).hex())
+    if isinstance(value, Complex):
+        normalized = complex(value)
+        return ("complex", normalized.real.hex(), normalized.imag.hex())
+    parameters = getattr(value, "parameters", None)
+    if parameters == set():
+        try:
+            return ("float", float(value).hex())
+        except (TypeError, ValueError):
+            return None
+    return None

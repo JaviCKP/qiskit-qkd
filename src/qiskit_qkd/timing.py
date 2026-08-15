@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from qiskit_qkd._json import JSONObject
 from qiskit_qkd._validation import (
@@ -29,6 +29,15 @@ class TimingOutcome:
     bob_gate_end_s: float
     signal_assigned_slot: int | None
     timing_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class TimingContext:
+    """Invariant timing values reused by every slot in one execution."""
+
+    slot_period_s: float
+    gate_width_s: float
+    timing: TimingConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +96,27 @@ def timing_state_from_scenario(
     )
 
 
+def timing_context_from_scenario(scenario: Scenario) -> TimingContext:
+    """Precompute timing values that are invariant across one scenario run."""
+
+    slot_period_s = 1.0 / require_positive_number(
+        "clock_rate_hz",
+        scenario.clock_rate_hz,
+    )
+    gate_width_s = require_positive_number(
+        "gate_width_s",
+        scenario.detector.gate_width_s,
+    )
+    return TimingContext(
+        slot_period_s=slot_period_s,
+        gate_width_s=gate_width_s,
+        timing=replace(
+            scenario.timing,
+            jitter_std_s=effective_jitter_std_s(scenario),
+        ),
+    )
+
+
 def assign_timing(
     *,
     time_slot: int,
@@ -96,6 +126,7 @@ def assign_timing(
     timing: TimingConfig,
     transmitted: bool,
     rng: random.Random,
+    context: TimingContext | None = None,
 ) -> TimingOutcome:
     """Assign a transmitted signal to a Bob detection gate when valid.
 
@@ -104,8 +135,15 @@ def assign_timing(
     """
 
     require_positive_int("pulses", pulses)
-    slot_period_s = 1.0 / require_positive_number("clock_rate_hz", clock_rate_hz)
-    require_positive_number("gate_width_s", gate_width_s)
+    if context is None:
+        slot_period_s = 1.0 / require_positive_number(
+            "clock_rate_hz",
+            clock_rate_hz,
+        )
+        require_positive_number("gate_width_s", gate_width_s)
+    else:
+        slot_period_s = context.slot_period_s
+        gate_width_s = context.gate_width_s
     emission_time_s = time_slot * slot_period_s
     expected_arrival_time_s = emission_time_s + timing.propagation_delay_s
     current_start_s, current_end_s = bob_gate_bounds_s(

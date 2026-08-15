@@ -12,7 +12,7 @@ Phase 5 adds Eve parameters for BB84 intercept-resend studies. Phase 6 adds
 weak-coherent decoy intensity classes and per-intensity result diagnostics.
 Phase 6.1 adds first-order fiber impairment parameters for PMD, chromatic
 dispersion, polarization-dependent loss, and Raman crosstalk. Phase 6.2 adds
-decoy-security estimates and photon-number-splitting Eve parameters. Phase 7
+asymptotic decoy diagnostics and photon-number-splitting Eve parameters. Phase 7
 adds E91 Bell-pair settings and CHSH diagnostics. Phase 8 adds non-fiber
 optical channel parameters for space, free-space/satellite, and underwater
 links.
@@ -34,6 +34,13 @@ links.
 - `eavesdropper`: optional Phase 5 adversarial model configuration.
 - `e91`: optional Phase 7 E91 Bell-pair protocol configuration.
 
+These are requested values. After execution,
+`SimulationResult.provenance["effective_model"]` records which
+source/channel/detector/protocol models were selected and which registered
+parameter names were consumed or ignored.
+Use it with the scenario digest, backend/Qiskit/Aer versions, primitive path,
+and all recorded seeds when comparing or reproducing runs.
+
 Derived duration:
 
 ```text
@@ -48,10 +55,21 @@ duration_s = pulses / clock_rate_hz
 - `bob_angles_rad`: Bob measurement angles in radians.
 - `key_setting_pairs`: pairs of Alice/Bob setting indexes used for sifted key.
 - `chsh_terms`: signed `(alice_setting, bob_setting, coefficient)` terms used
-  to compute CHSH `S`.
+  to compute CHSH `S`. Exactly four unique pairs must form a complete 2x2
+  setting grid; coefficients are integer `-1`/`+1` values whose sign product
+  is `-1`. This is the family of equivalent CHSH witnesses with classical
+  local bound `2`; empty, duplicate, incomplete, or bound-4 patterns are
+  rejected.
 - `bob_key_bit_flip`: when true, Bob flips key bits for the singlet
   anticorrelation key pair.
 - `chsh_estimation_enabled`: when false, CHSH is not reported.
+
+E91 assessment reports `observed_chsh_s`, `chsh_sample_size`,
+`chsh_sample_size_by_term`, and a nullable `observed_threshold_exceeded`.
+The Bell summary also records `classical_bound=2.0` explicitly.
+`conclusion_scope="diagnostic_fair_sampling_no_significance_test"` means that
+the detected-coincidence sample is post-selected: no significance test or
+confidence interval is performed and no detection/locality loophole is closed.
 
 For E91, `SourceConfig(kind="entangled_pair")` emits one Bell pair when the
 source fires. `source.preparation_error_probability` is interpreted as Bell
@@ -134,10 +152,23 @@ the result can be passed directly to a protocol runner. The original scenario
 is not mutated. Protocol runners reject scenarios that still carry unresolved
 dynamic schedules.
 
+`sweep_bb84_time()` additionally requires BB84, at least two distinct
+non-negative time points, and at least one supported schedule whose effective
+value actually changes across those points. Missing schedules, constant
+profiles, and ramps whose endpoints resolve to the same value are rejected;
+they are not relabelled as temporal evolution.
+
 For full link-state rows without running BB84, use
 `ChannelCharacterizer().characterize_time(...)`. For protocol metrics at each
 time point, use `analysis.sweep_bb84_time(...)`. Both return flat JSON-safe
 rows so future plotting code can select columns directly.
+
+Each requested time is resolved into an independent static run. The sweep does
+not evolve one detector/channel state continuously and does not preserve dead
+time, afterpulse, or fading memory between time points.
+Sweep rows expose `requested_scenario_digest` and
+`effective_scenario_digest`; compare the latter when checking the concrete
+parameters executed at a point.
 
 ## Eavesdropper
 
@@ -196,8 +227,9 @@ eve_information_estimate = sifted_bits_known_by_eve / sifted
 - `preparation_error_probability`: probability that the prepared logical BB84
   bit is flipped before basis encoding. This models a pedagogical source-state
   preparation error and is sampled only for emitted/transmitted signal rounds.
-- `decoy_intensities`: optional tuple of `DecoyIntensity` rows used by
-  `SourceConfig(kind="weak_coherent")`.
+- `decoy_intensities`: optional tuple of `DecoyIntensity` rows used by the
+  weak-coherent family (`kind="weak_coherent"` or
+  `kind="decoy_weak_coherent"`).
 
 Phase 3 models only the ideal single-photon source case. Each emitted pulse has
 `photon_number=1`; a non-emitted pulse has `photon_number=0` and can still
@@ -219,9 +251,16 @@ P(n | mu) = exp(-mu) * mu**n / n!
 emitted = n > 0
 ```
 
-If `kind="weak_coherent"` is used without explicit `decoy_intensities`,
+If a weak-coherent kind is used without explicit `decoy_intensities`,
 `mean_photon_number` is required and the source falls back to a single
 `signal` class using that value.
+
+Consequently, `emission_probability` requested together with a weak-coherent
+source is retained for schema compatibility but does not control emission.
+When explicit `decoy_intensities` are present, their per-class
+`mean_photon_number` values take precedence over the top-level value. Inspect
+the effective-model provenance instead of inferring behavior from an inactive
+requested field.
 
 ## Channel
 
@@ -238,10 +277,13 @@ If `kind="weak_coherent"` is used without explicit `decoy_intensities`,
   derives `theta = 2.44 * wavelength_m / transmitter_aperture_m`.
 - `atmospheric_extinction_db_km`: free-space atmospheric extinction in dB per
   kilometer.
-- `scintillation_sigma`: dimensionless log-normal fading sigma for atmospheric
-  or underwater turbulence. `0.0` disables scintillation.
-- `pointing_jitter_rad`: RMS angular pointing jitter. `0.0` disables pointing
-  fading.
+- `scintillation_sigma`: dimensionless log-normal fading sigma for the
+  `free_space` family (`free_space`, `atmospheric`, `satellite`) or underwater
+  family (`underwater`, `water`, `marine`). `0.0` disables scintillation; the
+  vacuum-space family (`space`, `deep_space`, `vacuum`) does not sample it.
+- `pointing_jitter_rad`: RMS angular pointing jitter for the same free-space
+  and underwater families. `0.0` disables pointing fading; the vacuum-space
+  family does not sample it.
 - `underwater_extinction_m_inv`: Beer-Lambert water extinction coefficient in
   inverse meters.
 - `underwater_scattering_broadening_ns_per_m`: underwater scattering temporal
@@ -282,12 +324,14 @@ transmitted = rng.random() < eta_channel
 
 Non-fiber channel kinds:
 
-- `space`: vacuum/deep-space optical link with diffraction-limited geometric
-  loss and fixed optical loss.
-- `free_space`: atmospheric or satellite link with geometric loss,
-  atmospheric extinction, optional scintillation, and optional pointing jitter.
-- `underwater`: water link with geometric loss, Beer-Lambert extinction,
-  optional turbulence/pointing fading, and optional scattering broadening.
+- `space` (aliases `deep_space`, `vacuum`): vacuum/deep-space optical link with
+  diffraction-limited geometric loss and fixed optical loss.
+- `free_space` (aliases `atmospheric`, `satellite`): atmospheric or satellite
+  link with geometric loss, atmospheric extinction, optional scintillation,
+  and optional pointing jitter.
+- `underwater` (aliases `water`, `marine`): water link with geometric loss,
+  Beer-Lambert extinction, optional turbulence/pointing fading, and optional
+  scattering broadening.
 
 Geometric aperture coupling:
 
@@ -317,9 +361,10 @@ eta_base =
   * 10 ** (-fixed_loss_db / 10)
 ```
 
-For `space`, `free_space`, and `underwater`, `transmittance()` returns the
-stable baseline used by `ChannelCharacterizer`. During event simulation,
-channels with fading expose `sample_transmittance(rng)`:
+For every non-fiber optical family, `transmittance()` returns the stable
+baseline used by `ChannelCharacterizer`. During event simulation only
+the fading-capable free-space and underwater families apply the following
+scintillation/pointing sample; the vacuum-space family uses its stable baseline:
 
 ```text
 f_scint ~ LogNormal(-scintillation_sigma**2 / 2, scintillation_sigma)
@@ -443,7 +488,7 @@ detected            Bob recorded a detection after detector effects
 sifted              detected same-basis BB84 events
 errors              sifted Alice/Bob bit mismatches
 gain                detected / pulses
-qber                errors / sifted
+qber                errors / sifted, or legacy 0.0 when sifted == 0
 ```
 
 These statistics make the decoy effects visible and easy to plot. Phase 6.2
@@ -468,12 +513,18 @@ e1_U = (E_nu Q_nu exp(nu) - 0.5 Y0) / (nu Y1_L)
 ```
 
 The estimator is asymptotic and clips finite-sample Monte Carlo artifacts to
-valid probability ranges. For BB84 security diagnostics, error rates greater
+valid probability ranges. For BB84 diagnostic rates, error rates greater
 than or equal to `0.5` contribute no privacy term, so the reported secret-rate
 diagnostic cannot become positive again because `h2(1) == 0`. It is not a
 finite-key or composable proof.
 
 ## Detector
+
+Both `DetectorConfig.kind="ideal"` and `kind="threshold"` currently construct
+the same effective `ThresholdDetector`. The `ideal` label does not override
+explicit efficiency/noise/memory fields; an actually idealized detector needs
+efficiency `1.0` and zero dark counts, dead time, afterpulsing, and readout
+error. The effective-model provenance records the concrete class.
 
 - `efficiency`: detector efficiency as a probability.
 - `dark_count_rate_hz`: dark-count rate in hertz.
@@ -616,7 +667,7 @@ physical-round preparation and exposed by `ChannelCharacterizer`.
   `SimulationResult.decoy["security"]` diagnostic row whenever the required
   signal, weak decoy, and vacuum rows are present.
 - `decoy_security_method`: validated decoy estimator selector. Use
-  `"vacuum_weak_asymptotic"` for the current real estimator, or `"none"` to
+  `"vacuum_weak_asymptotic"` for the current asymptotic diagnostic, or `"none"` to
   keep only observed per-intensity statistics.
 
 The Phase 3.6 flow is:
@@ -636,6 +687,13 @@ When residual mismatches remain, Alice and Bob hold different strings, so the
 result reports `final_key_length=0` and no digest, mirroring the error
 verification exchange of real systems.
 
+With `qber_sample_fraction=0`, `qber_sample_size` is zero: no bits are publicly
+revealed. For pedagogical validation the implementation nevertheless computes
+the decision value from the complete sifted strings. Assessment labels this
+oracle-like value `qber_method="full_sifted_key_diagnostic"`; it must not be
+interpreted as an estimate available to Alice and Bob through the modeled
+public transcript.
+
 Error correction is meaningful only when Alice and Bob's sifted strings are
 already correlated. If dark counts dominate and QBER approaches `0.5`, the run
 should abort instead of attempting to force a shared key from random strings.
@@ -646,8 +704,12 @@ QBER:
 
 ```text
 qber = errors / sifted        if sifted > 0
-qber = 0                     if sifted == 0
+qber = 0                      if sifted == 0  # legacy numeric placeholder
 ```
+
+The authoritative interpretation of the second branch is
+`assessment.qber_defined=False`, `qber_value=None`, and
+`data_status="insufficient_data"`, not "zero observed errors".
 
 Pedagogical BB84 secret fraction:
 
@@ -672,6 +734,26 @@ secret_key_rate_bps = sifted_key_rate_bps * secret_fraction
 
 If the abort threshold is enabled and exceeded, Phase 3 reports
 `secret_key_rate_bps=0.0`.
+
+The following outputs answer different questions and must not be collapsed
+into a single "secure" boolean:
+
+- `metrics.abort`: legacy flag comparing aggregate `metrics.qber`
+  (`errors/sifted`) with the configured threshold; the legacy rate formula
+  also uses that aggregate QBER.
+- `assessment.threshold_exceeded` and `threshold_decision_source`: the
+  interpreted classical/legacy/disabled threshold decision. With a revealed
+  sample this can legitimately differ from the aggregate legacy flag.
+- `assessment.verification_status`: whether reconciliation was verified.
+- `assessment.key_status`: whether this educational pipeline estimated key
+  material and, if not, why.
+- `assessment.rate_estimate_status`: whether the pedagogical asymptotic rate is
+  available and whether it conflicts with the key status.
+- `assessment.security_scope`, `finite_key`, and `composable`: the scientific
+  scope; currently `pedagogical_asymptotic_diagnostic`, `False`, and `False`.
+
+Thus a positive `secret_key_rate_bps` is not a finite-key bound, composable
+proof, verified production key, or guarantee for a real implementation.
 
 In Phase 3, `loss_db` is the active channel loss for the scenario. `gain`
 continues to mean detections per attempted pulse, including dark-count

@@ -1,14 +1,21 @@
+from pathlib import Path
+
 import pytest
 
 from qiskit_qkd import (
     ChannelConfig,
     DetectorConfig,
+    E91Config,
     EveConfig,
     PostProcessingConfig,
     ProtocolConfig,
     Scenario,
     SourceConfig,
     make_rng,
+)
+from qiskit_qkd.config import (
+    UnsupportedScenarioVersionError,
+    migrate_scenario_v1_to_v2,
 )
 
 
@@ -101,6 +108,93 @@ def test_channel_config_defaults_to_telecom_fiber_attenuation() -> None:
     assert ChannelConfig.from_dict({}).attenuation_db_km == 0.2
 
 
+def test_e91_config_accepts_equivalent_chsh_sign_and_term_order() -> None:
+    terms = (
+        (1, 1, 1),
+        (0, 1, -1),
+        (1, 0, -1),
+        (0, 0, -1),
+    )
+
+    config = E91Config(chsh_terms=terms)
+
+    assert config.chsh_terms == terms
+    assert config.classical_bound == 2.0
+    assert E91Config.from_dict(config.to_dict()) == config
+
+
+@pytest.mark.parametrize(
+    ("terms", "exception", "match"),
+    [
+        (None, TypeError, "tuple or list"),
+        ((), ValueError, "exactly four"),
+        (
+            ((0, 0, 1), (1, 0, 1), (0, 1, 1)),
+            ValueError,
+            "exactly four",
+        ),
+        (
+            (
+                (0, 0, 1),
+                (1, 0, 1),
+                (0, 1, 1),
+                (1, 1, -1),
+                (2, 2, -1),
+            ),
+            ValueError,
+            "exactly four",
+        ),
+        (
+            ((0, 0), (1, 0, 1), (0, 1, 1), (1, 1, -1)),
+            TypeError,
+            "exactly three values",
+        ),
+        (
+            ((0, 0, 1), (0, 0, 1), (1, 0, 1), (1, 1, -1)),
+            ValueError,
+            "unique setting pairs",
+        ),
+        (
+            ((0, 0, 1), (1, 0, 1), (2, 0, 1), (2, 1, -1)),
+            ValueError,
+            "Cartesian product",
+        ),
+        (
+            ((0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)),
+            ValueError,
+            "product -1",
+        ),
+        (
+            ((0, 0, True), (1, 0, 1), (0, 1, 1), (1, 1, -1)),
+            TypeError,
+            "integer -1 or 1",
+        ),
+        (
+            ((0, 0, 1.0), (1, 0, 1), (0, 1, 1), (1, 1, -1)),
+            TypeError,
+            "integer -1 or 1",
+        ),
+        (
+            ((0, 0, "1"), (1, 0, 1), (0, 1, 1), (1, 1, -1)),
+            TypeError,
+            "integer -1 or 1",
+        ),
+        (
+            ((0, 0, 0), (1, 0, 1), (0, 1, 1), (1, 1, -1)),
+            ValueError,
+            "integer -1 or 1",
+        ),
+    ],
+)
+def test_e91_config_rejects_invalid_chsh_terms(
+    terms,
+    exception: type[Exception],
+    match: str,
+) -> None:
+    with pytest.raises(exception, match=match):
+        E91Config(chsh_terms=terms)
+
+
 @pytest.mark.parametrize(
     "factory",
     [
@@ -139,3 +233,43 @@ def test_channel_config_defaults_to_telecom_fiber_attenuation() -> None:
 def test_invalid_parameters_raise(factory) -> None:
     with pytest.raises((TypeError, ValueError)):
         factory()
+
+
+def test_scenario_v1_round_trip_preserves_wire_version_and_digest() -> None:
+    current = build_scenario()
+    legacy = current.to_dict(schema_version=1)
+    restored = Scenario.from_dict(legacy)
+
+    assert restored.to_dict()["schema_version"] == 1
+    assert restored.digest() == current.digest()
+
+
+def test_scenario_v1_to_v2_migration_is_explicit_and_digest_stable() -> None:
+    current = build_scenario()
+    legacy = current.to_dict(schema_version=1)
+
+    migrated = migrate_scenario_v1_to_v2(legacy)
+
+    assert migrated["schema_version"] == 2
+    assert Scenario.from_dict(migrated).digest() == current.digest()
+    assert legacy["schema_version"] == 1
+
+
+def test_scenario_future_version_reports_found_version_and_solution() -> None:
+    payload = build_scenario().to_dict(schema_version=2)
+    payload["schema_version"] = 99
+
+    with pytest.raises(UnsupportedScenarioVersionError) as caught:
+        Scenario.from_dict(payload)
+
+    assert caught.value.found_version == 99
+    assert "upgrade" in caught.value.suggestion
+
+
+def test_historical_v1_fixture_is_read_without_version_drift() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "contracts" / "scenario_v1.json"
+    payload = fixture.read_text(encoding="utf-8")
+    scenario = Scenario.from_json(payload)
+
+    assert scenario.to_dict()["schema_version"] == 1
+    assert scenario.pulses == 8

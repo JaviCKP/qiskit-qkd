@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol, cast
 
 from qiskit_qkd._validation import (
     require_non_negative_int,
-    require_positive_number,
     require_probability,
 )
-from qiskit_qkd.channels.impairments import (
-    effective_jitter_std_s,
-    pdl_transmittance_factor,
-)
+from qiskit_qkd.channels.impairments import pdl_transmittance_factor
 from qiskit_qkd.config import Scenario
 from qiskit_qkd.sources import EmissionEvent
-from qiskit_qkd.timing import assign_timing
+from qiskit_qkd.timing import (
+    TimingContext,
+    assign_timing,
+    timing_context_from_scenario,
+)
 
 
 class SourceLike(Protocol):
@@ -74,14 +74,13 @@ def prepare_physical_round(
     rng: random.Random,
     alice_bit: int | None = None,
     alice_basis: str | None = None,
+    timing_context: TimingContext | None = None,
 ) -> PhysicalRound:
     """Sample source emission, channel transmission, and Bob timing metadata."""
 
     index = require_non_negative_int("index", index)
-    slot_period_s = 1.0 / require_positive_number(
-        "clock_rate_hz",
-        scenario.clock_rate_hz,
-    )
+    context = timing_context or timing_context_from_scenario(scenario)
+    slot_period_s = context.slot_period_s
     emission_time_s = index * slot_period_s
     emission = source.emit(rng=rng, time_s=emission_time_s)
     surviving_photon_number = _surviving_photon_count(
@@ -93,18 +92,15 @@ def prepare_physical_round(
         alice_basis=alice_basis,
     )
     transmitted = surviving_photon_number > 0
-    effective_timing = replace(
-        scenario.timing,
-        jitter_std_s=effective_jitter_std_s(scenario),
-    )
     timing = assign_timing(
         time_slot=index,
         pulses=scenario.pulses,
         clock_rate_hz=scenario.clock_rate_hz,
         gate_width_s=scenario.detector.gate_width_s,
-        timing=effective_timing,
+        timing=context.timing,
         transmitted=transmitted,
         rng=rng,
+        context=context,
     )
     return PhysicalRound(
         index=index,

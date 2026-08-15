@@ -1,8 +1,9 @@
 # qiskit-qkd
 
 `qiskit-qkd` is a Qiskit-first Python package for quantum key distribution
-simulations. It currently includes the validated domain model, an ideal BB84
-path backed by real Qiskit circuits and Sampler primitives, and the Phase 3
+simulations. It currently includes a type/range-validated configuration/domain
+schema and an ideal BB84 path backed by real Qiskit circuits and Sampler
+primitives, plus the Phase 3
 event layer for fiber loss, detector efficiency, dark counts, and distance
 sweeps. Phase 3.5 adds explicit timing metadata, Bob detection gates, clock
 offset/drift, jitter, dead time, and afterpulsing in the event layer.
@@ -19,13 +20,65 @@ plotting or dashboards. Phase 5 adds explicit BB84 eavesdropper models with
 weak-coherent decoy intensities and per-intensity BB84 statistics. Phase 6.1
 adds first-order fiber impairments for PMD, chromatic dispersion,
 polarization-dependent loss, and Raman crosstalk. Phase 6.2 adds asymptotic
-vacuum+weak decoy security estimates and a traceable photon-number-splitting
+vacuum+weak decoy diagnostic estimates and a traceable photon-number-splitting
 Eve model. Phase 7 adds E91 entanglement-based QKD with Bell-pair circuits,
 CHSH diagnostics, source-pair imperfections, and plot-ready Bell rows. Phase 8
 adds non-fiber optical channels for deep-space, free-space/satellite, and
 underwater QKD link studies. Phase 9 adds optional Matplotlib visual analytics
 for sweep rows, decoy diagnostics, E91 correlations, Eve trade-offs, timing
 summaries, and publication-ready SVG/PNG exports.
+
+## Scientific Interpretation
+
+This is an educational Monte Carlo simulator, not a security certification
+tool. Result interpretation is explicit in `SimulationResult.assessment`:
+`qber_defined` distinguishes a measured zero QBER from the legacy numeric
+placeholder `metrics.qber == 0.0` used when there are no sifted bits;
+`data_status`, `key_status`, and `rate_estimate_status` distinguish missing
+data, a post-processing outcome, and an asymptotic rate estimate. The legacy
+`metrics.abort` flag records only its historical aggregate-threshold decision.
+It is not equivalent to the classical sample-threshold decision, successful
+verification, an available key estimate, or formal security.
+
+All reported key rates, including the field named `secret_key_rate_bps`, are
+pedagogical asymptotic diagnostics. They are not finite-key bounds, composable
+security proofs, production key material, or guarantees for a real link. With
+`qber_sample_fraction=0`, the classical pipeline uses the full sifted key only
+as a simulator diagnostic; that value is not a publicly obtainable estimate
+and is labelled `qber_method="full_sifted_key_diagnostic"`.
+
+E91 reports an observed CHSH statistic from detected coincidences. A value
+above 2 is an observed threshold crossing in the simulated, post-selected
+sample under a fair-sampling interpretation. No significance test, confidence
+interval, detection/locality loophole closure, or device-independent security
+claim is performed.
+
+Configurable CHSH terms are restricted to a genuine four-term, two-setting
+per party witness with local bound 2. Duplicate/incomplete setting grids and
+sign patterns with local bound 4 are rejected instead of being compared with
+the wrong threshold.
+
+For reproducibility, retain the requested scenario, its digest and seed, the
+effective model snapshot, and the backend/Qiskit/Aer version and seed metadata.
+Requested parameters describe user intent; `provenance.effective_model`
+describes what the selected source, channel, detector, and protocol actually
+used. Repeating a seed is meaningful only with the same effective model,
+software versions, backend path, and primitive configuration.
+
+Sweep rows keep `requested_scenario_digest` and
+`effective_scenario_digest` separately so a base request is not confused with
+the concrete point that was executed.
+
+The current `SimulationResult` envelope is schema v2 and requires a non-null,
+evidence-checked `assessment`. The reader accepts schema-v1 archives and marks
+the derived assessment/provenance in `provenance.archive_load`; explicit
+`to_legacy_dict()`/`to_legacy_json()` exports omit the v2 assessment for old
+readers. Loading an archive never substitutes the current runtime version or a
+newly inferred effective model as historical producer evidence.
+
+The current payload does not hash the implementation checkout and does not
+record the Python runtime version; archive the VCS revision and environment
+lock separately when exact long-term reproduction matters.
 
 ## Installation
 
@@ -87,7 +140,8 @@ python examples/bb84_fiber_sweep.py
 ```
 
 This example sweeps BB84 over a simple fiber model and prints distance, optical
-loss, detections, gain, sifted bits, QBER, and secret-key rate.
+loss, detections, gain, sifted bits, QBER, and the legacy pedagogical
+asymptotic key-rate estimate.
 
 ## BB84 Visualization Demo
 
@@ -145,7 +199,8 @@ python examples/bb84_decoy.py
 
 This example samples weak-coherent `signal`, `decoy`, and `vacuum` intensities
 and prints per-intensity gain, QBER, multi-photon counts, and the asymptotic
-vacuum+weak decoy estimate for `Y1`, `e1`, `Q1`, and secret key rate. The same
+vacuum+weak decoy estimate for `Y1`, `e1`, `Q1`, and a pedagogical asymptotic
+key-rate diagnostic. The same
 data can be flattened for plotting with `decoy_rows_from_result(result)`.
 
 ## E91 CHSH Demo
@@ -193,7 +248,7 @@ for Phase 4.1 temporal schedules and channel characterization, and
 families, and [docs/visualization.md](docs/visualization.md) for Phase 9
 visual analytics.
 
-Dashboards, CLI commands, finite-key decoy proofs, loophole-free
+CLI commands, finite-key decoy proofs, loophole-free
 device-independent E91 analysis, orbital/weather propagation, automatic report
 generation, and full spectral/Jones-matrix propagation models remain future
 phases.

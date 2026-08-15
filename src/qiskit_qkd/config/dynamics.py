@@ -10,69 +10,7 @@ from qiskit_qkd._json import JSONObject
 from qiskit_qkd._validation import reject_unknown_fields, require_non_empty_str
 from qiskit_qkd.temporal.profiles import TimeProfile, profile_from_dict
 
-_DYNAMIC_TARGETS: dict[str, set[str]] = {
-    "source": {
-        "emission_probability",
-        "mean_photon_number",
-        "preparation_error_probability",
-    },
-    "channel": {
-        "distance_km",
-        "attenuation_db_km",
-        "fixed_loss_db",
-        "wavelength_nm",
-        "transmitter_aperture_m",
-        "receiver_aperture_m",
-        "beam_divergence_rad",
-        "atmospheric_extinction_db_km",
-        "scintillation_sigma",
-        "pointing_jitter_rad",
-        "underwater_extinction_m_inv",
-        "underwater_scattering_broadening_ns_per_m",
-        "depolarizing_probability",
-        "phase_damping_probability",
-        "polarization_rotation_y_rad",
-        "polarization_rotation_z_rad",
-        "background_count_rate_hz",
-        "pmd_coefficient_ps_sqrt_km",
-        "chromatic_dispersion_ps_nm_km",
-        "source_spectral_width_nm",
-        "polarization_dependent_loss_db",
-        "classical_channel_power_mw",
-        "raman_coefficient_hz_mw_km",
-        "raman_filter_isolation_db",
-    },
-    "detector": {
-        "efficiency",
-        "dark_count_rate_hz",
-        "gate_width_s",
-        "dead_time_s",
-        "afterpulse_probability",
-        "readout_error_probability",
-    },
-    "timing": {
-        "propagation_delay_s",
-        "jitter_std_s",
-        "clock_offset_s",
-        "clock_drift_ppm",
-    },
-    "post_processing": {
-        "qber_abort_threshold",
-        "qber_sample_fraction",
-        "error_correction_efficiency",
-    },
-    "eavesdropper": {
-        "intercept_probability",
-        "pns_split_probability",
-        "pns_block_single_photon_probability",
-    },
-}
-
-SWEEPABLE_TARGETS = frozenset(
-    target
-    for section, fields in _DYNAMIC_TARGETS.items()
-    for target in (f"{section}.{field}" for field in fields)
-) | frozenset({"scenario.pulses", "scenario.clock_rate_hz"})
+from .capabilities import DYNAMIC_PARAMETER_TARGETS, SWEEPABLE_TARGETS
 
 
 def validate_parameter_target(target: str) -> str:
@@ -96,7 +34,13 @@ class ParameterSchedule:
     profile: TimeProfile
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "target", validate_parameter_target(self.target))
+        normalized_target = validate_parameter_target(self.target)
+        if normalized_target not in DYNAMIC_PARAMETER_TARGETS:
+            raise ValueError(
+                f"target {normalized_target!r} is sweepable but does not support "
+                "time-dependent schedules; choose a target advertised as dynamic",
+            )
+        object.__setattr__(self, "target", normalized_target)
         if isinstance(self.profile, Mapping):
             object.__setattr__(self, "profile", profile_from_dict(self.profile))
         elif not hasattr(self.profile, "value_at") or not hasattr(

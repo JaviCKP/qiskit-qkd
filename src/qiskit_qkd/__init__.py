@@ -2,7 +2,6 @@
 
 from typing import TYPE_CHECKING
 
-from ._version import __version__
 from .analysis import (
     add_derived_metrics,
     bell_rows_from_result,
@@ -25,8 +24,9 @@ from .config import (
     SourceConfig,
     TimingConfig,
 )
+from .provenance import PACKAGE_VERSION as __version__
 from .reproducibility import make_rng
-from .results import Event, Metrics, SimulationResult
+from .results import Event, Metrics, ResultAssessment, SimulationResult
 from .sources import (
     EmissionEvent,
     EntangledPairSource,
@@ -100,6 +100,7 @@ __all__ = [
     "PostProcessingConfig",
     "ProtocolConfig",
     "QiskitSamplerBackend",
+    "ResultAssessment",
     "Scenario",
     "SimulationResult",
     "SpaceChannel",

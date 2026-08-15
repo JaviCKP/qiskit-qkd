@@ -7,8 +7,11 @@ __pycache__/
 .coverage
 build/
 dist/
+src/qiskit_qkd/_version.py
 scratch/
 examples/figures/
 panel/store/
 panel/web/node_modules/
 panel/web/dist/
+panel/web/vitest_output.txt
+panel/web/vitest_report*.json

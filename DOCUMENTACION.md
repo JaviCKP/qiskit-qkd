@@ -1,6 +1,6 @@
 # Documentación de `qiskit-qkd`
 
-`qiskit-qkd` es un paquete de Python orientado a la simulación de protocolos de **Distribución de Claves Cuánticas (QKD)**. Su diseño sitúa a Qiskit en el centro del procesamiento cuántico (circuitos, puertas y medidas), mientras que implementa de forma clásica y externa las imperfecciones físicas, temporales, espionajes y post-procesamientos clásicos que caracterizan a los sistemas QKD reales.
+`qiskit-qkd` es un paquete de Python orientado a la simulación de protocolos de **Distribución de Claves Cuánticas (QKD)**. Su diseño sitúa a Qiskit en el centro del procesamiento cuántico (circuitos, puertas y medidas), mientras que implementa de forma clásica y externa modelos educativos de imperfecciones físicas, temporales, espionajes y post-procesamientos clásicos.
 
 Esta documentación detalla qué hace el repositorio, su filosofía de diseño, cómo opera bajo el capó, las fórmulas y modelos físicos que utiliza, y la estructura de su código.
 
@@ -13,14 +13,14 @@ Una de las decisiones arquitectónicas más importantes de `qiskit-qkd` es la de
 *   **¿Qué hace Qiskit?** Qiskit es responsable únicamente del procesamiento y manipulación del estado cuántico. Se crean objetos `QuantumCircuit` para codificar los bits en bases (como la base computacional $Z$ o la base de Hadamard $X$), aplicar cambios de base de medida en Bob, realizar rotaciones coherentes de polarización (puertas `ry` y `rz`) y ejecutar las simulaciones de circuitos usando primitivas de Qiskit (como `StatevectorSampler` o `SamplerV2` de Aer).
 *   **¿Qué se simula fuera de Qiskit (Capa de Eventos)?** Los efectos clásicos y fotónicos, tales como la pérdida de fotones por atenuación en fibra, el número de fotones supervivientes, la pérdida dependiente de polarización (PDL), el ensanchamiento temporal por PMD y dispersión cromática, el crosstalk Raman, la eficiencia del detector, las cuentas oscuras (dark counts), la luz de fondo (background clicks), el tiempo muerto del detector, los post-pulsos (afterpulsing), el espionaje clásico (intercept-resend) y los errores de sincronización temporal (jitter, clock offset/drift).
     *   *¿Por qué?* En un simulador puramente cuántico, la pérdida por fibra a menudo se modela usando canales de relajación de amplitud (`amplitude_damping`). Sin embargo, en QKD físico, si un fotón se pierde en el canal de fibra, simplemente **no llega al detector** (no hay evento de click); no decae a un estado $|0\rangle$ que luego es medido. Al manejar las pérdidas y los tiempos muertos en la capa de eventos clásicos, el simulador ejecuta circuitos cuánticos únicamente para los pulsos que realmente son emitidos, conservan al menos un fotón tras el canal y quedan asignados a una compuerta temporal válida de Bob, logrando una simulación mucho más eficiente y físicamente honesta.
-*   **Honestidad del Modelo**: Los protocolos (como el sifting y la reconciliación clásica) se ejecutan utilizando únicamente la información que Alice y Bob podrían anunciar públicamente en un escenario real (ej. qué slots registraron clicks y en qué bases medió Bob). No se emplean "trampas" del simulador (como saber de antemano qué fotón se transmitió o si un click fue por ruido u origen de señal cuántica) para forzar los resultados.
+*   **Honestidad del Modelo**: Los protocolos (como el sifting y la reconciliación clásica) separan la información pública de Alice y Bob de los diagnósticos internos del simulador (por ejemplo, el origen de un click o la acción de Eve). Hay una excepción pedagógica explícita: con `qber_sample_fraction=0`, el QBER clásico se calcula sobre toda la clave cribada como diagnóstico interno, no como una estimación obtenible mediante anuncios públicos.
 
 ---
 
 ## 2. Fases de Desarrollo
 
 El repositorio está estructurado en base a fases incrementales de madurez:
-1.  **Fase 3**: Introducción del modelo de dominio validado, simulador de BB84 ideal respaldado por circuitos de Qiskit, atenuación en fibra, eficiencia del detector, cuentas oscuras y políticas de resolución de doble click.
+1.  **Fase 3**: Introducción del esquema de configuración/dominio con validación de tipos y rangos, simulador de BB84 ideal respaldado por circuitos de Qiskit, atenuación en fibra, eficiencia del detector, cuentas oscuras y políticas de resolución de doble click.
 2.  **Fase 3.5 (Timing y Compuertas de Bob)**: Introducción de sincronización explícita temporal. Los slots de tiempo no son contadores de fotones detectados, sino slots temporales concretos de Alice ($n$). Se añade jitter gaussiano de llegada, desalineación fija de reloj (offset), deriva térmica de reloj (drift), tiempo muerto del detector y probabilidad de post-pulso.
 3.  **Fase 3.6 (Post-procesamiento Clásico)**: Capa pedagógica de reconciliación clásica posterior al sifting. Incluye muestreo reproducible de QBER, descarte por encima de umbral, reconciliación por bloques de paridad (protocolo pedagógico de corrección), cálculo de fuga de información de corrección de errores (`leak_ec`) y amplificación de privacidad basada en hashes deterministas.
 4.  **Fase 4 (Ruido de Aer y Transpilación)**: Integración con Qiskit Aer `NoiseModel` para modelar errores cuánticos de estado (canal despolarizante y dephasing) y de lectura cuántica (readout error). Se introduce la opción de simular transpilación controlada a través de pass managers de Qiskit.
@@ -28,9 +28,10 @@ El repositorio está estructurado en base a fases incrementales de madurez:
 6.  **Fase 5 (Adversario / Espionaje)**: Introducción de modelos explícitos de espionaje en el canal cuántico, implementando el ataque pedagógico de interceptación y reenvío (`InterceptResendEve`).
 7.  **Fase 6 (Estados Señuelo / Decoy States)**: Implementación de fuentes de estados señuelo coherentemente atenuados con muestreo de número de fotones mediante distribución de Poisson, supervivencia binomial de fotones en fibra y estadísticas por intensidad.
 8.  **Fase 6.1 (Imperfecciones Avanzadas de Fibra)**: Añade modelos de primer orden para PMD, dispersión cromática, pérdida dependiente de polarización y crosstalk Raman. Estos efectos se mantienen en la capa de eventos y caracterización: PMD/CD modifican el jitter efectivo de llegada, PDL modifica la transmitancia según el estado BB84 preparado y Raman suma una tasa de fondo óptico al detector.
-9.  **Fase 6.2 (Decoy Real y PNS)**: Añade estimación asintótica vacuum+weak para cotar `Y1`, `Q1` y `e1`, calcula una tasa secreta decoy diagnóstica y modela un ataque de photon-number splitting (`PhotonNumberSplittingEve`) sobre pulsos multifotón.
+9.  **Fase 6.2 (Diagnóstico Decoy Asintótico y PNS)**: Añade estimación asintótica vacuum+weak para cotar `Y1`, `Q1` y `e1`, calcula una tasa decoy diagnóstica y modela un ataque de photon-number splitting (`PhotonNumberSplittingEve`) sobre pulsos multifotón.
 10. **Fase 7 (E91 y CHSH)**: Añade protocolo E91 basado en pares Bell, medidas angulares de Alice/Bob, coincidencias, QBER de clave, diagnóstico CHSH (`S`) y filas planas para graficar correlaciones.
 11. **Fase 8 (Familias de Canales Ópticos)**: Añade canales no-fibra para QKD en espacio profundo, espacio libre/atmosférico/satélite y medio subacuático. Estos canales modelan pérdidas geométricas, extinción atmosférica, scintillation, jitter de apuntamiento, extinción Beer-Lambert y ensanchamiento temporal por scattering, manteniendo el ruido cuántico de estado en la capa Qiskit/Aer.
+12. **Fase 9 (Analítica Visual)**: Añade analítica visual opcional con Matplotlib sobre las filas planas de análisis: barridos de métricas, resúmenes de distancia BB84, comparación de canales, diagnósticos decoy, correlaciones E91/CHSH, compromisos de Eve y conteos de timing, con export SVG/PNG listo para publicación. Matplotlib es una dependencia opcional (extra `plot`) que solo se importa al llamar a una función de gráficas, de modo que el núcleo de simulación no depende de ella.
 
 ---
 
@@ -85,16 +86,54 @@ graph TD
 7.  **Sifting (Criba)**: Alice y Bob comparan públicamente sus bases de preparación y medición para los slots donde Bob registró detección. Se descartan aquellos slots con bases cruzadas.
 8.  **Post-procesamiento Clásico**:
     *   Se revela una fracción de la clave cribada para estimar la tasa de error de bit cuántico (**QBER**).
-    *   Si el QBER supera el umbral límite, el protocolo se **aborta** (evitando revelar más información).
+    *   Si el QBER estimado supera el umbral límite, la etapa clásica se detiene antes de la reconciliación. Esta decisión no es idéntica al campo agregado legacy `metrics.abort`.
     *   Si es aceptable, se corrige la clave de Bob mediante un protocolo pedagógico de paridad por bloques.
-    *   Se aplica amplificación de privacidad determinista basada en el QBER y la paridad revelada, generando el digest final de la clave secreta.
-9.  **Métricas y Resultados**: Se calcula la ganancia, el QBER real, la tasa de clave cribada y la tasa de clave secreta final en bits por segundo (bps), y se devuelven en un `SimulationResult`.
+    *   Se aplica una amplificación de privacidad determinista pedagógica basada en el QBER y la paridad revelada, generando un digest reproducible para pruebas; no es material de clave operativo.
+9.  **Métricas y Resultados**: Se calculan ganancia, QBER, tasa de clave cribada y una estimación asintótica pedagógica de tasa de clave. `SimulationResult.assessment` indica si el QBER está definido, si hay datos suficientes, el estado de verificación y clave, y el alcance científico de la estimación.
 
-Los eventos (`Event`) almacenan tanto `photon_number` como `surviving_photon_number`. Las estadísticas decoy agregadas en `SimulationResult.decoy` incluyen también `surviving_photons`, lo que permite auditar que el canal, el detector y las intensidades se comportan de forma coherente sin depender de logs completos. Cuando hay intensidades señal, decoy débil y vacío, `SimulationResult.decoy["security"]` añade la estimación asintótica vacuum+weak si `PostProcessingConfig.decoy_security_estimation_enabled=True`.
+Los eventos (`Event`) almacenan tanto `photon_number` como `surviving_photon_number`. Las estadísticas decoy agregadas en `SimulationResult.decoy` incluyen también `surviving_photons`, lo que permite auditar que el canal, el detector y las intensidades se comportan de forma coherente sin depender de logs completos. Cuando hay intensidades señal, decoy débil y vacío, `SimulationResult.decoy["security"]` añade la estimación asintótica vacuum+weak si `PostProcessingConfig.decoy_security_estimation_enabled=True`; `security` es aquí una clave legacy para un diagnóstico, no una prueba formal.
 
 Para análisis y gráficas, `decoy_rows_from_result(result)` convierte el resumen decoy anidado en filas planas con `row_type="intensity"` o `row_type="security"`, aptas para CSV, Pandas o visualización directa.
 
 E91 se implementa como un protocolo separado (`E91Protocol`), no como una variante de BB84. Qiskit prepara y mide el par Bell, mientras la capa de eventos conserva pérdidas del brazo de Bob, timing, detectores y ruido óptico de Bob. Como la fuente se modela co-localizada con Alice, el detector de Alice mantiene cuentas oscuras, tiempo muerto y post-pulsos, pero no recibe el fondo de canal ni el crosstalk Raman acumulado en la fibra de Bob. `SimulationResult.bell` almacena las correlaciones por par de ajustes y `bell_rows_from_result(result)` las convierte en filas listas para gráficas.
+
+### Lectura científica de resultados y procedencia
+
+El campo numérico legacy `metrics.qber` conserva el valor `0.0` cuando no hay
+bits cribados para no romper serializaciones anteriores. Ese cero no es una
+observación: `assessment.qber_defined=False`, `qber_value=None` y
+`data_status="insufficient_data"` son la interpretación autoritativa. Asimismo,
+`metrics.abort`, la decisión del umbral sobre la muestra clásica,
+`verification_status`, `key_status` y `rate_estimate_status` responden preguntas
+distintas. Ninguno de ellos, por separado o combinado, demuestra seguridad
+formal.
+
+Las tasas llamadas históricamente `secret_key_rate_bps` son comparadores
+pedagógicos asintóticos. No incluyen análisis finite-key, parámetros de fallo,
+autenticación del canal clásico, pruebas componibles, efectos laterales ni una
+certificación del hardware real. `assessment.security_scope` las etiqueta como
+`pedagogical_asymptotic_diagnostic`; `finite_key` y `composable` son falsos.
+
+La procedencia conserva la configuración solicitada y su digest, la semilla,
+el snapshot `provenance.effective_model` realmente usado y los metadatos del
+backend/primitive, Qiskit y Aer. Un mismo digest solicitado no basta para
+reproducir una ejecución si cambian el modelo efectivo, las versiones o la ruta
+de backend. En barridos temporales cada punto es un escenario estático resuelto;
+las filas distinguen `requested_scenario_digest` del
+`effective_scenario_digest`. Un barrido no representa por sí mismo una
+trayectoria física con memoria entre puntos.
+
+El sobre actual de `SimulationResult` es schema v2 y exige un `assessment`
+no nulo coherente con escenario, métricas y diagnósticos. El lector conserva
+compatibilidad de entrada con schema v1, deriva la evaluación y registra el
+origen en `provenance.archive_load`; `to_legacy_dict()` y
+`to_legacy_json()` generan una exportación v1 explícita y necesariamente
+lossy. Cargar un archivo histórico no sustituye su versión productora ni
+inventa un `effective_model` con el runtime lector.
+
+La procedencia actual no incluye un digest del checkout/commit ni la versión
+del runtime de Python; para reproducción a largo plazo deben archivarse aparte
+la revisión de control de versiones y el entorno bloqueado.
 
 ---
 
@@ -262,7 +301,15 @@ $$E(a,b)=\frac{N_{\text{same}}(a,b)-N_{\text{different}}(a,b)}{N_{\text{same}}(a
 Con los términos configurados en `E91Config.chsh_terms`, calcula:
 $$S=\left|\sum_{a,b} c_{ab}E(a,b)\right|$$
 
-Un valor $S>2$ indica violación de la desigualdad CHSH en el modelo simulado. El caso ideal se aproxima a $2\sqrt{2}$ salvo fluctuaciones Monte Carlo. Esta métrica es diagnóstica: no constituye una prueba device-independent finite-key ni un test libre de loopholes.
+La configuración acepta exactamente cuatro pares únicos que formen una malla
+2x2 completa, con coeficientes enteros $\pm1$ cuyo producto de signos sea
+$-1$. Así todos los testigos aceptados tienen cota local clásica 2; se
+rechazan términos vacíos, duplicados, incompletos o patrones cuya cota sería
+4. El resumen Bell conserva `classical_bound=2.0` y una decisión observada
+triestado. El booleano legacy `bell_violation` proyecta el estado desconocido a
+`false` y no debe usarse sin el tamaño de muestra.
+
+Un valor observado $S>2$ cruza el umbral CHSH clásico en la muestra de coincidencias detectadas del modelo. El caso ideal se aproxima a $2\sqrt{2}$ salvo fluctuaciones Monte Carlo. La conclusión es diagnóstica y post-seleccionada, bajo una interpretación de *fair sampling*: no se calcula significación estadística ni intervalo de confianza, no se cierran los *loopholes* de detección/localidad y no se obtiene una prueba *device-independent* o finite-key. `assessment` registra el tamaño total y por término de la muestra CHSH para evitar presentar el cruce de umbral sin denominador.
 
 La tasa secreta reportada en E91 usa el modelo `pedagogical_bb84_asymptotic_qber_fraction`: reutiliza la fracción asintótica basada en QBER de BB84 como métrica comparativa didáctica. No debe interpretarse como una cota de seguridad device-independent.
 
@@ -333,6 +380,7 @@ El código fuente está distribuido dentro del directorio `src/qiskit_qkd/` de l
 *   [`results/`](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/results): Define las clases que empaquetan las salidas del simulador ([event.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/results/event.py), [metrics.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/results/metrics.py) y [result.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/results/result.py)).
 *   [`sources/`](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/sources): Modelos de fuentes emisoras. [single_photon.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/sources/single_photon.py) contiene `EmissionEvent`, `IdealSinglePhotonSource`, `WeakCoherentDecoySource` y `source_from_config`.
 *   [`analysis/`](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/analysis): Utilidades para realizar barridos paramétricos, barridos de tiempo dinámicos, filas planas de decoy y filas Bell/CHSH listas para graficar.
+*   [`visualization/`](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/visualization): Capa opcional de gráficas de la Fase 9 basada en Matplotlib. [plots.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/visualization/plots.py) define los graficadores genéricos, [recipes.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/visualization/recipes.py) las recetas de dominio (distancia BB84, comparación de canales, decoy, CHSH de E91, compromisos de Eve y timing) y [style.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/visualization/style.py) el estilo común. Solo importa Matplotlib cuando se invoca una gráfica.
 *   [channel_core.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/channel_core.py): Orquesta la evaluación conjunta de fuente, canal y timing para cada pulso en cada slot temporal.
 *   [timing.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/timing.py): Implementa el cálculo matemático de asignación de ventanas de llegada y desalineaciones de compuertas temporales.
 *   [reproducibility.py](file:///c:/Users/javi/Documents/TFG/qiskit-qkd/src/qiskit_qkd/reproducibility.py): Garantiza que los generadores de números aleatorios (`random.Random`) se inicialicen de forma reproducible a partir de la semilla del `Scenario`.
@@ -348,10 +396,12 @@ El repositorio cuenta con una suite de pruebas unitarias localizada en [`tests/`
 *   **Post-procesamiento (`test_classical_postprocessing.py`)**: Prueba el muestreo de QBER, descarte por aborto, bisección de errores de bloque y amplificación de privacidad.
 *   **Validación de Configuración (`test_config.py`)**: Rangos de parámetros, tipos e inmutabilidad.
 *   **Estados Señuelo (`test_decoy_bb84.py`)**: Verifica el muestreo de Poisson, el conteo de fotones supervivientes, las estadísticas por intensidad, las ganancias, el QBER, el interruptor de la estimación asintótica vacuum+weak (`Y1`, `Q1`, `e1`) y la exportación de filas decoy listas para graficar. No valida pruebas finite-key/componibles.
-*   **E91 (`test_e91_protocol.py`)**: Valida preparación de pares Bell, extracción de clave por coincidencias, violación CHSH ideal, degradación por error de fuente y degradación por ruido cuántico Aer.
+*   **E91 (`test_e91_protocol.py`)**: Valida preparación de pares Bell, extracción de clave por coincidencias, cruce observado del umbral CHSH en el caso ideal, degradación por error de fuente y degradación por ruido cuántico Aer; no valida significación ni cierre de *loopholes*.
 *   **Espionaje (`test_eavesdroppers.py`)**: Asegura que el ataque de interceptación y reenvío funcione de forma reproducible e introduzca la perturbación esperada en BB84, y que PNS aprenda bits multifotón sin añadir QBER artificial.
 *   **Imperfecciones Avanzadas de Fibra (`test_fiber_impairments.py`)**: Valida serialización de PMD/CD/PDL/Raman, aumento de descartes temporales por ensanchamiento, fondo Raman efectivo, PDL dependiente del estado y columnas de caracterización listas para graficar.
 *   **Modelado de Detectores (`test_fiber_detector.py`, `test_timing_detector.py`)**: Valida detectores de umbral, eficiencia por fotón superviviente, inactividad por tiempo muerto, post-pulsos y comportamiento temporal.
 *   **Integración Cuántica (`test_qiskit_backend.py`, `test_qiskit_circuits.py`)**: Correcta creación de circuitos en base Z/X y ejecuciones en backend.
 *   **Perfiles Temporales y Barridos (`test_temporal_profiles.py`, `test_time_sweeps.py`)**: Validaciones de constantes, rampas lineales y exponenciales para simulación en el tiempo.
+*   **Invariantes Científicos (`test_scientific_invariants.py`)**: Comprueba datos insuficientes, BB84 ideal, tendencias de pérdida/eficiencia con semillas emparejadas, intercept-resend, reproducibilidad con cotas estadísticas y la conclusión CHSH observada con su muestra; usa tolerancias explícitas y no convierte esas pruebas en afirmaciones de seguridad formal.
+*   **Visualización (`test_visualization.py`)**: Valida que las funciones de visualización de la Fase 9 generan figuras Matplotlib reproducibles y degradan con un aviso claro cuando falta la dependencia opcional `plot`.
 *   **Smoke y Serialización (`test_import.py`, `test_serialization.py`, `test_examples.py`)**: Importación correcta, serialización completa JSON bidireccional de resultados y ejecución de ejemplos.

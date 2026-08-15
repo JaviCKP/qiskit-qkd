@@ -15,6 +15,7 @@ const fields = [
   field('channel.underwater_scattering_broadening_ns_per_m'),
   field('detector.efficiency'),
   field('timing.jitter_std_s'),
+  field('source.mean_photon_number'),
   field('source.decoy_intensities', {
     visible_when: { target: 'source.kind', equals: 'decoy_weak_coherent' },
   }),
@@ -58,7 +59,7 @@ test('ideal hides physical medium impairment fields', () => {
   expect(visible).not.toContain('channel.underwater_extinction_m_inv')
 })
 
-test('custom and expert mode show all catalog-visible fields', () => {
+test('custom shows all fields while expert mode still respects the active medium', () => {
   const custom = visibleFieldsForMedium({
     fields,
     mediumId: 'custom',
@@ -76,11 +77,11 @@ test('custom and expert mode show all catalog-visible fields', () => {
 
   expect(custom).toContain('channel.pointing_jitter_rad')
   expect(custom).toContain('channel.underwater_extinction_m_inv')
-  expect(expert).toContain('channel.pointing_jitter_rad')
-  expect(expert).toContain('channel.underwater_extinction_m_inv')
+  expect(expert).not.toContain('channel.pointing_jitter_rad')
+  expect(expert).not.toContain('channel.underwater_extinction_m_inv')
 })
 
-test('search can reveal hidden matching fields', () => {
+test('search never reveals fields from another medium', () => {
   const visible = visibleFieldsForMedium({
     fields,
     mediumId: 'fiber',
@@ -89,7 +90,7 @@ test('search can reveal hidden matching fields', () => {
     search: 'pointing',
   }).map((item) => item.key)
 
-  expect(visible).toEqual(['channel.pointing_jitter_rad'])
+  expect(visible).toEqual([])
 })
 
 test('search does not reveal catalog-hidden fields', () => {
@@ -102,6 +103,24 @@ test('search does not reveal catalog-hidden fields', () => {
   }).map((item) => item.key)
 
   expect(visible).toEqual([])
+})
+
+test('hides scalar source intensity when named decoys take precedence', () => {
+  const visible = visibleFieldsForMedium({
+    fields,
+    mediumId: 'fiber',
+    scenario: {
+      source: {
+        kind: 'decoy_weak_coherent',
+        decoy_intensities: [{ name: 'signal' }],
+      },
+    },
+    expert: true,
+    search: '',
+  }).map((item) => item.key)
+
+  expect(visible).toContain('source.decoy_intensities')
+  expect(visible).not.toContain('source.mean_photon_number')
 })
 
 test('e91 fields are visible when protocol enables them', () => {
@@ -118,6 +137,17 @@ test('e91 fields are visible when protocol enables them', () => {
 
   expect(visible).toContain('e91.bell_state')
   expect(visible).toContain('e91.alice_angles_rad')
+})
+
+test('published channel applicability hides scientifically irrelevant fields', () => {
+  const visible = visibleFieldsForMedium({
+    fields: [field('channel.attenuation_db_km', { applicable_channel_kinds: ['fiber'] })],
+    mediumId: 'air',
+    scenario: { channel: { kind: 'free_space' } },
+    expert: true,
+    search: '',
+  })
+  expect(visible).toEqual([])
 })
 
 function field(key: string, overrides: Partial<CatalogField> = {}): CatalogField {
