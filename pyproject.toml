@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "setuptools-scm>=8,<9", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "qiskit-qkd"
-version = "0.0.0"
+dynamic = ["version"]
 description = "Qiskit-first tools for quantum key distribution simulations."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [
   { name = "qiskit-qkd contributors" }
@@ -18,8 +18,9 @@ classifiers = [
   "Intended Audience :: Education",
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
@@ -30,17 +31,53 @@ dependencies = [
 aer = [
   "qiskit-aer>=0.17",
 ]
+plot = [
+  "matplotlib>=3.8",
+]
+panel = [
+  "fastapi",
+  "uvicorn[standard]",
+  "httpx",
+]
 dev = [
+  "build>=1.2,<2",
   "pytest>=8.0",
+  "pytest-cov>=6,<8",
   "ruff>=0.8",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools_scm]
+version_file = "src/qiskit_qkd/_version.py"
+fallback_version = "0.1.dev0"
+version_file_template = """
+\"\"\"Build-time package version and VCS provenance.\"\"\"
+
+__all__ = [
+    \"__commit__\",
+    \"__dirty__\",
+    \"__vcs_metadata_source__\",
+    \"__version__\",
+    \"__version_tuple__\",
+    \"version\",
+    \"version_tuple\",
+]
+
+__version__ = version = {version!r}
+__version_tuple__ = version_tuple = {version_tuple!r}
+__commit__ = {scm_version.node!r} or \"unknown\"
+__dirty__ = {scm_version.dirty!r}
+__vcs_metadata_source__ = (
+    \"setuptools_scm\" if {scm_version.node!r} else \"version\"
+)
+"""
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 88
@@ -48,3 +85,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"experiments/*.py" = ["E501"]
+"src/qiskit_qkd/_version.py" = ["I001", "UP006", "UP007", "UP035"]

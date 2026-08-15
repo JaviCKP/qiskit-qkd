@@ -62,6 +62,8 @@ class Metrics:
             object.__setattr__(self, name, value)
         if self.transmitted > self.emitted:
             raise ValueError("transmitted must not exceed emitted")
+        if self.sifted > self.detected:
+            raise ValueError("sifted must not exceed detected")
         if self.errors > self.sifted:
             raise ValueError("errors must not exceed sifted")
         object.__setattr__(self, "qber", require_probability("qber", self.qber))

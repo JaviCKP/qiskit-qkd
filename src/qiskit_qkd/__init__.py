@@ -2,44 +2,120 @@
 
 from typing import TYPE_CHECKING
 
-from ._version import __version__
+from .analysis import (
+    add_derived_metrics,
+    bell_rows_from_result,
+    decoy_rows_from_result,
+    metric_rows_from_results,
+    secure_distance_limit,
+    summarize_metric_rows,
+)
 from .config import (
     ChannelConfig,
+    DecoyIntensity,
     DetectorConfig,
+    DynamicConfig,
+    E91Config,
+    EveConfig,
+    ParameterSchedule,
     PostProcessingConfig,
     ProtocolConfig,
     Scenario,
     SourceConfig,
     TimingConfig,
 )
+from .provenance import PACKAGE_VERSION as __version__
 from .reproducibility import make_rng
-from .results import Event, Metrics, SimulationResult
-from .sources import EmissionEvent, IdealSinglePhotonSource, source_from_config
+from .results import Event, Metrics, ResultAssessment, SimulationResult
+from .sources import (
+    EmissionEvent,
+    EntangledPairSource,
+    IdealSinglePhotonSource,
+    WeakCoherentDecoySource,
+    source_from_config,
+)
 
 if TYPE_CHECKING:
     from .backends import QiskitSamplerBackend
-    from .protocols import BB84Protocol
-    from .qiskit_integration import CircuitFactory
+    from .channels import (
+        ChannelCharacterizer,
+        ChannelState,
+        FiberChannel,
+        FreeSpaceChannel,
+        IdealChannel,
+        SpaceChannel,
+        UnderwaterChannel,
+    )
+    from .eavesdroppers import (
+        EveAttackResult,
+        InterceptResendEve,
+        NoEve,
+        PhotonNumberSplittingEve,
+    )
+    from .protocols import BB84Protocol, E91Protocol
+    from .qiskit_integration import (
+        AerNoiseModelAdapter,
+        CircuitFactory,
+        TranspilationOptions,
+    )
+    from .temporal import (
+        ConstantProfile,
+        ExponentialRampProfile,
+        LinearRampProfile,
+        ParameterResolver,
+    )
 
 __all__ = [
+    "AerNoiseModelAdapter",
+    "add_derived_metrics",
     "BB84Protocol",
+    "bell_rows_from_result",
     "ChannelConfig",
+    "ChannelCharacterizer",
+    "ChannelState",
     "CircuitFactory",
+    "ConstantProfile",
+    "DecoyIntensity",
     "DetectorConfig",
+    "DynamicConfig",
+    "E91Config",
+    "E91Protocol",
     "EmissionEvent",
+    "EntangledPairSource",
     "Event",
+    "EveAttackResult",
+    "EveConfig",
+    "ExponentialRampProfile",
+    "FiberChannel",
+    "FreeSpaceChannel",
+    "IdealChannel",
     "IdealSinglePhotonSource",
+    "InterceptResendEve",
+    "LinearRampProfile",
     "Metrics",
+    "NoEve",
+    "ParameterResolver",
+    "ParameterSchedule",
+    "PhotonNumberSplittingEve",
     "PostProcessingConfig",
     "ProtocolConfig",
     "QiskitSamplerBackend",
+    "ResultAssessment",
     "Scenario",
     "SimulationResult",
+    "SpaceChannel",
     "SourceConfig",
     "TimingConfig",
+    "TranspilationOptions",
+    "UnderwaterChannel",
+    "WeakCoherentDecoySource",
     "__version__",
+    "decoy_rows_from_result",
     "make_rng",
+    "metric_rows_from_results",
     "source_from_config",
+    "secure_distance_limit",
+    "summarize_metric_rows",
 ]
 
 
@@ -48,12 +124,84 @@ def __getattr__(name: str) -> object:
         from .protocols import BB84Protocol
 
         return BB84Protocol
+    if name == "E91Protocol":
+        from .protocols import E91Protocol
+
+        return E91Protocol
     if name == "CircuitFactory":
         from .qiskit_integration import CircuitFactory
 
         return CircuitFactory
+    if name == "AerNoiseModelAdapter":
+        from .qiskit_integration import AerNoiseModelAdapter
+
+        return AerNoiseModelAdapter
+    if name == "TranspilationOptions":
+        from .qiskit_integration import TranspilationOptions
+
+        return TranspilationOptions
     if name == "QiskitSamplerBackend":
         from .backends import QiskitSamplerBackend
 
         return QiskitSamplerBackend
+    if name == "ChannelCharacterizer":
+        from .channels import ChannelCharacterizer
+
+        return ChannelCharacterizer
+    if name == "ChannelState":
+        from .channels import ChannelState
+
+        return ChannelState
+    if name == "SpaceChannel":
+        from .channels import SpaceChannel
+
+        return SpaceChannel
+    if name == "FreeSpaceChannel":
+        from .channels import FreeSpaceChannel
+
+        return FreeSpaceChannel
+    if name == "FiberChannel":
+        from .channels import FiberChannel
+
+        return FiberChannel
+    if name == "IdealChannel":
+        from .channels import IdealChannel
+
+        return IdealChannel
+    if name == "UnderwaterChannel":
+        from .channels import UnderwaterChannel
+
+        return UnderwaterChannel
+    if name == "ConstantProfile":
+        from .temporal import ConstantProfile
+
+        return ConstantProfile
+    if name == "LinearRampProfile":
+        from .temporal import LinearRampProfile
+
+        return LinearRampProfile
+    if name == "ExponentialRampProfile":
+        from .temporal import ExponentialRampProfile
+
+        return ExponentialRampProfile
+    if name == "ParameterResolver":
+        from .temporal import ParameterResolver
+
+        return ParameterResolver
+    if name == "EveAttackResult":
+        from .eavesdroppers import EveAttackResult
+
+        return EveAttackResult
+    if name == "InterceptResendEve":
+        from .eavesdroppers import InterceptResendEve
+
+        return InterceptResendEve
+    if name == "NoEve":
+        from .eavesdroppers import NoEve
+
+        return NoEve
+    if name == "PhotonNumberSplittingEve":
+        from .eavesdroppers import PhotonNumberSplittingEve
+
+        return PhotonNumberSplittingEve
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

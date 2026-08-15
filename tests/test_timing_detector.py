@@ -335,3 +335,65 @@ def test_sifting_uses_public_assigned_slot_not_hidden_signal_truth() -> None:
 
     assert sifted.sifted is False
     assert sifted.error is None
+
+
+def test_nearest_assigned_signal_uses_assigned_bob_slot_basis() -> None:
+    backend = CountingBackend()
+    result = BB84Protocol().run(
+        scenario(
+            pulses=2,
+            seed=1,
+            clock_rate_hz=1.0,
+            detector=DetectorConfig(
+                kind="threshold",
+                efficiency=1.0,
+                dark_count_rate_hz=0.0,
+                gate_width_s=0.1,
+            ),
+            timing=TimingConfig(
+                clock_offset_s=-1.0,
+                slot_assignment_policy="nearest",
+            ),
+        ),
+        backend=backend,
+    )
+
+    first, second = result.event_sample
+
+    assert first.assigned_slot == 1
+    assert first.timing_status == "assigned_nearest"
+    assert first.bob_basis == second.bob_basis
+    assert backend.rounds[0][2] == second.bob_basis
+    assert result.metrics.timing_discards == 2
+
+
+def test_nearest_does_not_assign_signal_outside_any_bob_gate() -> None:
+    backend = CountingBackend()
+    result = BB84Protocol().run(
+        scenario(
+            pulses=1,
+            seed=149,
+            clock_rate_hz=1.0,
+            detector=DetectorConfig(
+                kind="threshold",
+                efficiency=1.0,
+                dark_count_rate_hz=0.0,
+                gate_width_s=0.1,
+            ),
+            timing=TimingConfig(
+                clock_offset_s=0.2,
+                slot_assignment_policy="nearest",
+            ),
+        ),
+        backend=backend,
+    )
+
+    (event,) = result.event_sample
+
+    assert event.arrival_time_s is not None
+    assert event.arrival_time_s < event.bob_gate_start_s
+    assert event.assigned_slot is None
+    assert event.timing_status == "early"
+    assert event.detected is False
+    assert result.metrics.timing_discards == 1
+    assert backend.rounds == []

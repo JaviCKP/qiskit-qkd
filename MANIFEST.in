@@ -1,0 +1,2 @@
+# The dashboard is a checkout-only application, not part of the Python sdist.
+prune panel

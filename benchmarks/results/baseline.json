@@ -1,0 +1,1281 @@
+{
+  "cases": [
+    {
+      "aggregate": {
+        "circuits": 1024,
+        "classical_s": {
+          "max": 0.30388659999880474,
+          "mean": 0.3012667600007262,
+          "median": 0.30169840000235126,
+          "min": 0.2991593000024295,
+          "relative_stdev_percent": 0.6438238017922795,
+          "stdev": 0.001939627107773098
+        },
+        "events_processed": 1024,
+        "output_bytes": 21554,
+        "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+        "peak_python_mib": {
+          "max": 1.9244470596313477,
+          "mean": 1.923177146911621,
+          "median": 1.9229316711425781,
+          "min": 1.9215593338012695,
+          "relative_stdev_percent": 0.06005683526487326,
+          "stdev": 0.0011549993309724017
+        },
+        "protocol_s": {
+          "max": 0.43480470000031346,
+          "mean": 0.42644656000047687,
+          "median": 0.4255843000009918,
+          "min": 0.4219128000004275,
+          "relative_stdev_percent": 1.1808609092433686,
+          "stdev": 0.005035740725858698
+        },
+        "quantum_s": {
+          "max": 0.13091810000150872,
+          "mean": 0.12517979999975068,
+          "median": 0.12388589999864053,
+          "min": 0.122753499997998,
+          "relative_stdev_percent": 2.6181478692862705,
+          "stdev": 0.0032773922664702873
+        },
+        "scenario_build_s": {
+          "max": 0.0004702000005636364,
+          "mean": 0.00045250000039231963,
+          "median": 0.0004528999998001382,
+          "min": 0.00044100000013713725,
+          "relative_stdev_percent": 2.596050271433664,
+          "stdev": 1.1747127488422144e-05
+        },
+        "serialization_s": {
+          "max": 0.005357399999411427,
+          "mean": 0.005033840000032796,
+          "median": 0.004920400000628433,
+          "min": 0.004871000001003267,
+          "relative_stdev_percent": 4.090745227518391,
+          "stdev": 0.00020592156956225334
+        },
+        "shots": 1024,
+        "total_s": {
+          "max": 0.44019530000150553,
+          "mean": 0.431932900000902,
+          "median": 0.4311579000004713,
+          "min": 0.42726820000098087,
+          "relative_stdev_percent": 1.1707262609423772,
+          "stdev": 0.005056751889960537
+        }
+      },
+      "description": "Ideal BB84 protocol run",
+      "name": "bb84_ideal",
+      "samples": [
+        {
+          "circuits": 1024,
+          "classical_s": 0.30388659999880474,
+          "events_processed": 1024,
+          "output_bytes": 21554,
+          "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+          "peak_python_mib": 1.9244470596313477,
+          "protocol_s": 0.43480470000031346,
+          "quantum_s": 0.13091810000150872,
+          "scenario_build_s": 0.0004702000005636364,
+          "serialization_s": 0.004920400000628433,
+          "shots": 1024,
+          "total_s": 0.44019530000150553
+        },
+        {
+          "circuits": 1024,
+          "classical_s": 0.2991593000024295,
+          "events_processed": 1024,
+          "output_bytes": 21554,
+          "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+          "peak_python_mib": 1.92413330078125,
+          "protocol_s": 0.4219128000004275,
+          "quantum_s": 0.122753499997998,
+          "scenario_build_s": 0.00045570000111183617,
+          "serialization_s": 0.004899699999441509,
+          "shots": 1024,
+          "total_s": 0.42726820000098087
+        },
+        {
+          "circuits": 1024,
+          "classical_s": 0.3020420999982889,
+          "events_processed": 1024,
+          "output_bytes": 21554,
+          "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+          "peak_python_mib": 1.9228143692016602,
+          "protocol_s": 0.4266817000006995,
+          "quantum_s": 0.12463960000241059,
+          "scenario_build_s": 0.00044100000013713725,
+          "serialization_s": 0.005357399999411427,
+          "shots": 1024,
+          "total_s": 0.43248010000024806
+        },
+        {
+          "circuits": 1024,
+          "classical_s": 0.30169840000235126,
+          "events_processed": 1024,
+          "output_bytes": 21554,
+          "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+          "peak_python_mib": 1.9215593338012695,
+          "protocol_s": 0.4255843000009918,
+          "quantum_s": 0.12388589999864053,
+          "scenario_build_s": 0.0004528999998001382,
+          "serialization_s": 0.005120699999679346,
+          "shots": 1024,
+          "total_s": 0.4311579000004713
+        },
+        {
+          "circuits": 1024,
+          "classical_s": 0.2995474000017566,
+          "events_processed": 1024,
+          "output_bytes": 21554,
+          "output_sha256": "5afd0ca217a0d166bb83652d5677480db9ef8acb2964ffbe09c91acb9fb55e0a",
+          "peak_python_mib": 1.9229316711425781,
+          "protocol_s": 0.4232492999999522,
+          "quantum_s": 0.12370189999819559,
+          "scenario_build_s": 0.00044270000034885015,
+          "serialization_s": 0.004871000001003267,
+          "shots": 1024,
+          "total_s": 0.4285630000013043
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 311,
+        "classical_s": {
+          "max": 0.31555389999994077,
+          "mean": 0.295514180000464,
+          "median": 0.29108280000218656,
+          "min": 0.28765179999936663,
+          "relative_stdev_percent": 3.838403165394345,
+          "stdev": 0.01134302563932695
+        },
+        "events_processed": 1024,
+        "output_bytes": 21647,
+        "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+        "peak_python_mib": {
+          "max": 0.5992765426635742,
+          "mean": 0.5985790252685547,
+          "median": 0.5985145568847656,
+          "min": 0.5979995727539062,
+          "relative_stdev_percent": 0.08638751902008936,
+          "stdev": 0.0005170975693041381
+        },
+        "protocol_s": {
+          "max": 0.35863849999986996,
+          "mean": 0.33784860000050687,
+          "median": 0.3333170000005339,
+          "min": 0.3304979000004096,
+          "relative_stdev_percent": 3.4617594033545505,
+          "stdev": 0.011695505679619248
+        },
+        "quantum_s": {
+          "max": 0.043084599999929196,
+          "mean": 0.04233442000004288,
+          "median": 0.04223419999834732,
+          "min": 0.04143819999808329,
+          "relative_stdev_percent": 1.5436790419044113,
+          "stdev": 0.0006535075690524514
+        },
+        "scenario_build_s": {
+          "max": 0.0008218000002671033,
+          "mean": 0.0007052199995086994,
+          "median": 0.0006722999987687217,
+          "min": 0.0005928999999014195,
+          "relative_stdev_percent": 14.576836945854506,
+          "stdev": 0.00010279876943793906
+        },
+        "serialization_s": {
+          "max": 0.006327999999484746,
+          "mean": 0.005340660000001662,
+          "median": 0.005074799999420065,
+          "min": 0.004971599999407772,
+          "relative_stdev_percent": 10.685501717390926,
+          "stdev": 0.0005706763160201879
+        },
+        "shots": 311,
+        "total_s": {
+          "max": 0.36563879999812343,
+          "mean": 0.3438944800000172,
+          "median": 0.3391148000009707,
+          "min": 0.3364268000004813,
+          "relative_stdev_percent": 3.5528010177104874,
+          "stdev": 0.012217886585290801
+        }
+      },
+      "description": "BB84 with fiber loss, background, and detector effects",
+      "name": "bb84_channel_detector",
+      "samples": [
+        {
+          "circuits": 311,
+          "classical_s": 0.31555389999994077,
+          "events_processed": 1024,
+          "output_bytes": 21647,
+          "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+          "peak_python_mib": 0.5988998413085938,
+          "protocol_s": 0.35863849999986996,
+          "quantum_s": 0.043084599999929196,
+          "scenario_build_s": 0.0006722999987687217,
+          "serialization_s": 0.006327999999484746,
+          "shots": 311,
+          "total_s": 0.36563879999812343
+        },
+        {
+          "circuits": 311,
+          "classical_s": 0.29108280000218656,
+          "events_processed": 1024,
+          "output_bytes": 21647,
+          "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+          "peak_python_mib": 0.5992765426635742,
+          "protocol_s": 0.3333170000005339,
+          "quantum_s": 0.04223419999834732,
+          "scenario_build_s": 0.0008048999989114236,
+          "serialization_s": 0.004992900001525413,
+          "shots": 311,
+          "total_s": 0.3391148000009707
+        },
+        {
+          "circuits": 311,
+          "classical_s": 0.28765179999936663,
+          "events_processed": 1024,
+          "output_bytes": 21647,
+          "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+          "peak_python_mib": 0.5979995727539062,
+          "protocol_s": 0.3304979000004096,
+          "quantum_s": 0.04284610000104294,
+          "scenario_build_s": 0.0005928999999014195,
+          "serialization_s": 0.005336000000170316,
+          "shots": 311,
+          "total_s": 0.3364268000004813
+        },
+        {
+          "circuits": 311,
+          "classical_s": 0.29253910000261385,
+          "events_processed": 1024,
+          "output_bytes": 21647,
+          "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+          "peak_python_mib": 0.5985145568847656,
+          "protocol_s": 0.33397730000069714,
+          "quantum_s": 0.04143819999808329,
+          "scenario_build_s": 0.0006341999996948289,
+          "serialization_s": 0.005074799999420065,
+          "shots": 311,
+          "total_s": 0.33968629999981204
+        },
+        {
+          "circuits": 311,
+          "classical_s": 0.290743299998212,
+          "events_processed": 1024,
+          "output_bytes": 21647,
+          "output_sha256": "1bffff6c1ea4c78ce08e499c79b75a87192de9a75ea02dffaafc430199dbb90c",
+          "peak_python_mib": 0.5982046127319336,
+          "protocol_s": 0.3328123000010237,
+          "quantum_s": 0.04206900000281166,
+          "scenario_build_s": 0.0008218000002671033,
+          "serialization_s": 0.004971599999407772,
+          "shots": 311,
+          "total_s": 0.33860570000069856
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 740,
+        "classical_s": {
+          "max": 0.6031393000012031,
+          "mean": 0.5934880200005864,
+          "median": 0.5924331000023813,
+          "min": 0.5861230999998952,
+          "relative_stdev_percent": 1.1793842630909894,
+          "stdev": 0.00699950431121722
+        },
+        "events_processed": 2048,
+        "output_bytes": 24058,
+        "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+        "peak_python_mib": {
+          "max": 0.9836750030517578,
+          "mean": 0.9829988479614258,
+          "median": 0.9829626083374023,
+          "min": 0.9820318222045898,
+          "relative_stdev_percent": 0.06323343054294095,
+          "stdev": 0.0006215838937635978
+        },
+        "protocol_s": {
+          "max": 0.6989431000001787,
+          "mean": 0.6880042200005846,
+          "median": 0.6867692000014358,
+          "min": 0.6780194000002666,
+          "relative_stdev_percent": 1.1628197014806463,
+          "stdev": 0.008000248617185048
+        },
+        "quantum_s": {
+          "max": 0.09591620000173862,
+          "mean": 0.0945161999999982,
+          "median": 0.09462859999985085,
+          "min": 0.09189630000037141,
+          "relative_stdev_percent": 1.716378895474113,
+          "stdev": 0.0016222561096040727
+        },
+        "scenario_build_s": {
+          "max": 0.0007643000008101808,
+          "mean": 0.0006039200001396239,
+          "median": 0.000558699999601231,
+          "min": 0.000524799999766401,
+          "relative_stdev_percent": 16.91332449562049,
+          "stdev": 0.0001021429493175663
+        },
+        "serialization_s": {
+          "max": 0.005996099998810678,
+          "mean": 0.005772920000163139,
+          "median": 0.005756399999881978,
+          "min": 0.005571499999859952,
+          "relative_stdev_percent": 3.4798898351175525,
+          "stdev": 0.00020089125627514528
+        },
+        "shots": 740,
+        "total_s": {
+          "max": 0.7051706000020204,
+          "mean": 0.6943810600008874,
+          "median": 0.693105000002106,
+          "min": 0.684300599999915,
+          "relative_stdev_percent": 1.1495557509589687,
+          "stdev": 0.007982297408810048
+        }
+      },
+      "description": "Weak-coherent decoy BB84",
+      "name": "bb84_decoy",
+      "samples": [
+        {
+          "circuits": 740,
+          "classical_s": 0.5861230999998952,
+          "events_processed": 2048,
+          "output_bytes": 24058,
+          "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+          "peak_python_mib": 0.9829626083374023,
+          "protocol_s": 0.6780194000002666,
+          "quantum_s": 0.09189630000037141,
+          "scenario_build_s": 0.000524799999766401,
+          "serialization_s": 0.005756399999881978,
+          "shots": 740,
+          "total_s": 0.684300599999915
+        },
+        {
+          "circuits": 740,
+          "classical_s": 0.5977051000008942,
+          "events_processed": 2048,
+          "output_bytes": 24058,
+          "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+          "peak_python_mib": 0.982940673828125,
+          "protocol_s": 0.692333700000745,
+          "quantum_s": 0.09462859999985085,
+          "scenario_build_s": 0.000558699999601231,
+          "serialization_s": 0.005958400000963593,
+          "shots": 740,
+          "total_s": 0.6988508000013098
+        },
+        {
+          "circuits": 740,
+          "classical_s": 0.5924331000023813,
+          "events_processed": 2048,
+          "output_bytes": 24058,
+          "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+          "peak_python_mib": 0.9836750030517578,
+          "protocol_s": 0.6867692000014358,
+          "quantum_s": 0.09433609999905457,
+          "scenario_build_s": 0.0007643000008101808,
+          "serialization_s": 0.005571499999859952,
+          "shots": 740,
+          "total_s": 0.693105000002106
+        },
+        {
+          "circuits": 740,
+          "classical_s": 0.5880394999985583,
+          "events_processed": 2048,
+          "output_bytes": 24058,
+          "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+          "peak_python_mib": 0.9833841323852539,
+          "protocol_s": 0.6839557000002969,
+          "quantum_s": 0.09591620000173862,
+          "scenario_build_s": 0.0005264999999781139,
+          "serialization_s": 0.005996099998810678,
+          "shots": 740,
+          "total_s": 0.6904782999990857
+        },
+        {
+          "circuits": 740,
+          "classical_s": 0.6031393000012031,
+          "events_processed": 2048,
+          "output_bytes": 24058,
+          "output_sha256": "0943bf750623668465d12988e01ca772c71e16881204a608f9efe7d81bcbb467",
+          "peak_python_mib": 0.9820318222045898,
+          "protocol_s": 0.6989431000001787,
+          "quantum_s": 0.09580379999897559,
+          "scenario_build_s": 0.0006453000005421927,
+          "serialization_s": 0.005582200001299498,
+          "shots": 740,
+          "total_s": 0.7051706000020204
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 768,
+        "classical_s": {
+          "max": 0.17617539999992005,
+          "mean": 0.1748619999994844,
+          "median": 0.17590560000098776,
+          "min": 0.17259939999894414,
+          "relative_stdev_percent": 0.9727963493510905,
+          "stdev": 0.0017010511523972882
+        },
+        "events_processed": 768,
+        "output_bytes": 31983,
+        "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+        "peak_python_mib": {
+          "max": 2.208529472351074,
+          "mean": 2.206933784484863,
+          "median": 2.2068796157836914,
+          "min": 2.2058801651000977,
+          "relative_stdev_percent": 0.04697436810852234,
+          "stdev": 0.0010366931998352627
+        },
+        "protocol_s": {
+          "max": 0.33207670000047074,
+          "mean": 0.32836389999974924,
+          "median": 0.32841799999914656,
+          "min": 0.32435029999942344,
+          "relative_stdev_percent": 0.8556634056468145,
+          "stdev": 0.0028096897296525547
+        },
+        "quantum_s": {
+          "max": 0.15617109999948298,
+          "mean": 0.15350190000026487,
+          "median": 0.1532201999998506,
+          "min": 0.15141570000014326,
+          "relative_stdev_percent": 1.3320616236597187,
+          "stdev": 0.002044739901492046
+        },
+        "scenario_build_s": {
+          "max": 0.0004743999998026993,
+          "mean": 0.00043515999968803956,
+          "median": 0.0004245000000082655,
+          "min": 0.00041989999954239465,
+          "relative_stdev_percent": 5.17050179606778,
+          "stdev": 2.2499955599638633e-05
+        },
+        "serialization_s": {
+          "max": 0.007272700000612531,
+          "mean": 0.00702082000025257,
+          "median": 0.007022599998890655,
+          "min": 0.006854600000224309,
+          "relative_stdev_percent": 2.283789986162729,
+          "stdev": 0.00016034078411227825
+        },
+        "shots": 768,
+        "total_s": {
+          "max": 0.339772900000753,
+          "mean": 0.3358198799996899,
+          "median": 0.335706099998788,
+          "min": 0.33168889999979,
+          "relative_stdev_percent": 0.8749128119469268,
+          "stdev": 0.002938131155182082
+        }
+      },
+      "description": "E91 Bell-pair protocol run",
+      "name": "e91",
+      "samples": [
+        {
+          "circuits": 768,
+          "classical_s": 0.17617539999992005,
+          "events_processed": 768,
+          "output_bytes": 31983,
+          "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+          "peak_python_mib": 2.206179618835449,
+          "protocol_s": 0.32939559999977064,
+          "quantum_s": 0.1532201999998506,
+          "scenario_build_s": 0.0004743999998026993,
+          "serialization_s": 0.007040100001177052,
+          "shots": 768,
+          "total_s": 0.3369101000007504
+        },
+        {
+          "circuits": 768,
+          "classical_s": 0.17590560000098776,
+          "events_processed": 768,
+          "output_bytes": 31983,
+          "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+          "peak_python_mib": 2.207200050354004,
+          "protocol_s": 0.33207670000047074,
+          "quantum_s": 0.15617109999948298,
+          "scenario_build_s": 0.00042349999966972973,
+          "serialization_s": 0.007272700000612531,
+          "shots": 768,
+          "total_s": 0.339772900000753
+        },
+        {
+          "circuits": 768,
+          "classical_s": 0.17346639999777835,
+          "events_processed": 768,
+          "output_bytes": 31983,
+          "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+          "peak_python_mib": 2.2068796157836914,
+          "protocol_s": 0.32841799999914656,
+          "quantum_s": 0.1549516000013682,
+          "scenario_build_s": 0.0004334999994171085,
+          "serialization_s": 0.006854600000224309,
+          "shots": 768,
+          "total_s": 0.335706099998788
+        },
+        {
+          "circuits": 768,
+          "classical_s": 0.1761631999997917,
+          "events_processed": 768,
+          "output_bytes": 31983,
+          "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+          "peak_python_mib": 2.208529472351074,
+          "protocol_s": 0.32757889999993495,
+          "quantum_s": 0.15141570000014326,
+          "scenario_build_s": 0.00041989999954239465,
+          "serialization_s": 0.007022599998890655,
+          "shots": 768,
+          "total_s": 0.335021399998368
+        },
+        {
+          "circuits": 768,
+          "classical_s": 0.17259939999894414,
+          "events_processed": 768,
+          "output_bytes": 31983,
+          "output_sha256": "3701c2abdf1f374d7f52db04c9a691133bcb5298617dd115cfd66e05e27b1989",
+          "peak_python_mib": 2.2058801651000977,
+          "protocol_s": 0.32435029999942344,
+          "quantum_s": 0.1517509000004793,
+          "scenario_build_s": 0.0004245000000082655,
+          "serialization_s": 0.006914100000358303,
+          "shots": 768,
+          "total_s": 0.33168889999979
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 334,
+        "classical_s": {
+          "max": 0.2615953000022273,
+          "mean": 0.25678484000018215,
+          "median": 0.25582850000137114,
+          "min": 0.2550312999992457,
+          "relative_stdev_percent": 1.055092593555794,
+          "stdev": 0.002709317828216018
+        },
+        "events_processed": 768,
+        "output_bytes": 59128,
+        "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+        "peak_python_mib": {
+          "max": 0.9788351058959961,
+          "mean": 0.9780498504638672,
+          "median": 0.9780969619750977,
+          "min": 0.9768037796020508,
+          "relative_stdev_percent": 0.0846008652630092,
+          "stdev": 0.0008274386361959992
+        },
+        "protocol_s": {
+          "max": 0.3233522999998968,
+          "mean": 0.3175970000000234,
+          "median": 0.31638349999957427,
+          "min": 0.3150965000004362,
+          "relative_stdev_percent": 1.033597003043773,
+          "stdev": 0.0032826730737571734
+        },
+        "quantum_s": {
+          "max": 0.06175699999766948,
+          "mean": 0.06081215999984124,
+          "median": 0.06066140000075393,
+          "min": 0.06006520000119053,
+          "relative_stdev_percent": 1.0406066300257137,
+          "stdev": 0.000632815368820193
+        },
+        "scenario_build_s": {
+          "max": 0.0005416000003606314,
+          "mean": 0.0005226600002060877,
+          "median": 0.0005203999990044395,
+          "min": 0.0005106000007799594,
+          "relative_stdev_percent": 2.306986316588684,
+          "stdev": 1.205769468703683e-05
+        },
+        "serialization_s": {
+          "max": 0.0034735999997792533,
+          "mean": 0.003303599999344442,
+          "median": 0.0032623999995848862,
+          "min": 0.003227199998946162,
+          "relative_stdev_percent": 3.100497146502698,
+          "stdev": 0.00010242802371153758
+        },
+        "shots": 334,
+        "total_s": {
+          "max": 0.32720119999976305,
+          "mean": 0.32142325999957394,
+          "median": 0.32027170000037586,
+          "min": 0.31883430000016233,
+          "relative_stdev_percent": 1.0272914973688583,
+          "stdev": 0.003301953820541422
+        }
+      },
+      "description": "Four-point distance sweep",
+      "name": "sweep_one_axis",
+      "samples": [
+        {
+          "circuits": 334,
+          "classical_s": 0.25562189999982365,
+          "events_processed": 768,
+          "output_bytes": 59128,
+          "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+          "peak_python_mib": 0.9788351058959961,
+          "protocol_s": 0.3162833000005776,
+          "quantum_s": 0.06066140000075393,
+          "scenario_build_s": 0.0005148000000190223,
+          "serialization_s": 0.0034735999997792533,
+          "shots": 334,
+          "total_s": 0.32027170000037586
+        },
+        {
+          "circuits": 334,
+          "classical_s": 0.2550312999992457,
+          "events_processed": 768,
+          "output_bytes": 59128,
+          "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+          "peak_python_mib": 0.9787473678588867,
+          "protocol_s": 0.3150965000004362,
+          "quantum_s": 0.06006520000119053,
+          "scenario_build_s": 0.0005106000007799594,
+          "serialization_s": 0.003227199998946162,
+          "shots": 334,
+          "total_s": 0.31883430000016233
+        },
+        {
+          "circuits": 334,
+          "classical_s": 0.255847199998243,
+          "events_processed": 768,
+          "output_bytes": 59128,
+          "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+          "peak_python_mib": 0.9768037796020508,
+          "protocol_s": 0.31638349999957427,
+          "quantum_s": 0.060536300001331256,
+          "scenario_build_s": 0.0005416000003606314,
+          "serialization_s": 0.0032317999994120328,
+          "shots": 334,
+          "total_s": 0.32015689999934693
+        },
+        {
+          "circuits": 334,
+          "classical_s": 0.2615953000022273,
+          "events_processed": 768,
+          "output_bytes": 59128,
+          "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+          "peak_python_mib": 0.9780969619750977,
+          "protocol_s": 0.3233522999998968,
+          "quantum_s": 0.06175699999766948,
+          "scenario_build_s": 0.0005259000008663861,
+          "serialization_s": 0.003322999998999876,
+          "shots": 334,
+          "total_s": 0.32720119999976305
+        },
+        {
+          "circuits": 334,
+          "classical_s": 0.25582850000137114,
+          "events_processed": 768,
+          "output_bytes": 59128,
+          "output_sha256": "cfaf740051c282a7582b4cdeb38711b08ea08befcb19388a2630272a25086d09",
+          "peak_python_mib": 0.9777660369873047,
+          "protocol_s": 0.31686939999963215,
+          "quantum_s": 0.06104089999826101,
+          "scenario_build_s": 0.0005203999990044395,
+          "serialization_s": 0.0032623999995848862,
+          "shots": 334,
+          "total_s": 0.3206521999982215
+        }
+      ],
+      "size": "small"
+    },
+    {
+      "aggregate": {
+        "circuits": 654,
+        "classical_s": {
+          "max": 0.5540823000046657,
+          "mean": 0.5529756799991447,
+          "median": 0.5534452999982022,
+          "min": 0.5512941999986651,
+          "relative_stdev_percent": 0.19744506512688714,
+          "stdev": 0.0010918231915101582
+        },
+        "events_processed": 1536,
+        "output_bytes": 177230,
+        "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+        "peak_python_mib": {
+          "max": 1.1206388473510742,
+          "mean": 1.1189138412475585,
+          "median": 1.1189775466918945,
+          "min": 1.1160430908203125,
+          "relative_stdev_percent": 0.16542562712250242,
+          "stdev": 0.0018509702388442549
+        },
+        "protocol_s": {
+          "max": 0.6935762000011891,
+          "mean": 0.6924124400000438,
+          "median": 0.6923971999985952,
+          "min": 0.6914816000007704,
+          "relative_stdev_percent": 0.12668519264239586,
+          "stdev": 0.0008771840334939691
+        },
+        "quantum_s": {
+          "max": 0.14036400000077265,
+          "mean": 0.13943676000089908,
+          "median": 0.1394938999965234,
+          "min": 0.13803630000256817,
+          "relative_stdev_percent": 0.6218110105645989,
+          "stdev": 0.0008670331264601249
+        },
+        "scenario_build_s": {
+          "max": 0.0005340000006981427,
+          "mean": 0.0005234799995378125,
+          "median": 0.0005221999999776017,
+          "min": 0.0005174999987502815,
+          "relative_stdev_percent": 1.2118998014189566,
+          "stdev": 6.344053074866704e-06
+        },
+        "serialization_s": {
+          "max": 0.009570499998517334,
+          "mean": 0.009390180000264082,
+          "median": 0.009314400000221212,
+          "min": 0.009247600000890088,
+          "relative_stdev_percent": 1.6561391003565797,
+          "stdev": 0.00015551444257823704
+        },
+        "shots": 654,
+        "total_s": {
+          "max": 0.7033708000017214,
+          "mean": 0.7023260999998456,
+          "median": 0.7021685999989131,
+          "min": 0.7014924999984942,
+          "relative_stdev_percent": 0.12125509536048935,
+          "stdev": 0.0008516061822964187
+        }
+      },
+      "description": "Distance sweep with detector series and repeated seeds",
+      "name": "sweep_series_repeats",
+      "samples": [
+        {
+          "circuits": 654,
+          "classical_s": 0.5534452999982022,
+          "events_processed": 1536,
+          "output_bytes": 177230,
+          "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+          "peak_python_mib": 1.1206388473510742,
+          "protocol_s": 0.6914816000007704,
+          "quantum_s": 0.13803630000256817,
+          "scenario_build_s": 0.0005340000006981427,
+          "serialization_s": 0.009546000001137145,
+          "shots": 654,
+          "total_s": 0.7015616000026057
+        },
+        {
+          "circuits": 654,
+          "classical_s": 0.5535233999999036,
+          "events_processed": 1536,
+          "output_bytes": 177230,
+          "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+          "peak_python_mib": 1.1189775466918945,
+          "protocol_s": 0.6929490000002261,
+          "quantum_s": 0.13942560000032245,
+          "scenario_build_s": 0.0005174999987502815,
+          "serialization_s": 0.009570499998517334,
+          "shots": 654,
+          "total_s": 0.7030369999974937
+        },
+        {
+          "circuits": 654,
+          "classical_s": 0.5525331999942864,
+          "events_processed": 1536,
+          "output_bytes": 177230,
+          "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+          "peak_python_mib": 1.1204290390014648,
+          "protocol_s": 0.6923971999985952,
+          "quantum_s": 0.13986400000430876,
+          "scenario_build_s": 0.0005237999994278653,
+          "serialization_s": 0.009247600000890088,
+          "shots": 654,
+          "total_s": 0.7021685999989131
+        },
+        {
+          "circuits": 654,
+          "classical_s": 0.5512941999986651,
+          "events_processed": 1536,
+          "output_bytes": 177230,
+          "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+          "peak_python_mib": 1.1160430908203125,
+          "protocol_s": 0.6916581999994378,
+          "quantum_s": 0.14036400000077265,
+          "scenario_build_s": 0.0005198999988351716,
+          "serialization_s": 0.009314400000221212,
+          "shots": 654,
+          "total_s": 0.7014924999984942
+        },
+        {
+          "circuits": 654,
+          "classical_s": 0.5540823000046657,
+          "events_processed": 1536,
+          "output_bytes": 177230,
+          "output_sha256": "0c51f849fc214de659c7896f7fb466af5e0a72b88857ee32f76fff9e847909f3",
+          "peak_python_mib": 1.1184806823730469,
+          "protocol_s": 0.6935762000011891,
+          "quantum_s": 0.1394938999965234,
+          "scenario_build_s": 0.0005221999999776017,
+          "serialization_s": 0.009272400000554626,
+          "shots": 654,
+          "total_s": 0.7033708000017214
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 2048,
+        "classical_s": {
+          "max": 1.089999932446517e-05,
+          "mean": 1.0539999129832722e-05,
+          "median": 1.0799998563015833e-05,
+          "min": 9.899998985929415e-06,
+          "relative_stdev_percent": 4.058684347160785,
+          "stdev": 4.2778529487340365e-07
+        },
+        "events_processed": 2048,
+        "output_bytes": 4097,
+        "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+        "peak_python_mib": {
+          "max": 3.7530059814453125,
+          "mean": 3.7529972076416014,
+          "median": 3.7530059814453125,
+          "min": 3.752962112426758,
+          "relative_stdev_percent": 0.0005227507624825736,
+          "stdev": 1.9618821518896165e-05
+        },
+        "protocol_s": {
+          "max": 0.22842210000089835,
+          "mean": 0.21375687999970977,
+          "median": 0.21152429999892775,
+          "min": 0.20705509999970673,
+          "relative_stdev_percent": 4.114723598846695,
+          "stdev": 0.008795504785506468
+        },
+        "quantum_s": {
+          "max": 0.22841130000051635,
+          "mean": 0.21374634000057996,
+          "median": 0.21151350000036473,
+          "min": 0.20704420000038226,
+          "relative_stdev_percent": 4.114862147534181,
+          "stdev": 0.008795367236423575
+        },
+        "scenario_build_s": {
+          "max": 0.0006941999999980908,
+          "mean": 0.0006671399998595007,
+          "median": 0.0006665000000793952,
+          "min": 0.0006424999992304947,
+          "relative_stdev_percent": 2.8072269637119676,
+          "stdev": 1.8728133961763887e-05
+        },
+        "serialization_s": {
+          "max": 0.0013753000002907356,
+          "mean": 0.0011056399998778943,
+          "median": 0.001034599999911734,
+          "min": 0.0010243999986414565,
+          "relative_stdev_percent": 13.68441270863299,
+          "stdev": 0.00015130034065502035
+        },
+        "shots": 2048,
+        "total_s": {
+          "max": 0.23046390000126848,
+          "mean": 0.21552965999944718,
+          "median": 0.21324450000065553,
+          "min": 0.20877369999834627,
+          "relative_stdev_percent": 4.146884208423761,
+          "stdev": 0.008937765434986499
+        }
+      },
+      "description": "Repeated equivalent noiseless Statevector circuits",
+      "name": "statevector_no_noise",
+      "samples": [
+        {
+          "circuits": 2048,
+          "classical_s": 9.899998985929415e-06,
+          "events_processed": 2048,
+          "output_bytes": 4097,
+          "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+          "peak_python_mib": 3.7530059814453125,
+          "protocol_s": 0.20714609999959066,
+          "quantum_s": 0.20713620000060473,
+          "scenario_build_s": 0.0006424999992304947,
+          "serialization_s": 0.001034599999911734,
+          "shots": 2048,
+          "total_s": 0.2088231999987329
+        },
+        {
+          "circuits": 2048,
+          "classical_s": 1.0799998563015833e-05,
+          "events_processed": 2048,
+          "output_bytes": 4097,
+          "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+          "peak_python_mib": 3.752962112426758,
+          "protocol_s": 0.21152429999892775,
+          "quantum_s": 0.21151350000036473,
+          "scenario_build_s": 0.0006607000013900688,
+          "serialization_s": 0.0010595000003377208,
+          "shots": 2048,
+          "total_s": 0.21324450000065553
+        },
+        {
+          "circuits": 2048,
+          "classical_s": 1.0800000382005237e-05,
+          "events_processed": 2048,
+          "output_bytes": 4097,
+          "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+          "peak_python_mib": 3.7530059814453125,
+          "protocol_s": 0.22842210000089835,
+          "quantum_s": 0.22841130000051635,
+          "scenario_build_s": 0.0006665000000793952,
+          "serialization_s": 0.0013753000002907356,
+          "shots": 2048,
+          "total_s": 0.23046390000126848
+        },
+        {
+          "circuits": 2048,
+          "classical_s": 1.0299998393747956e-05,
+          "events_processed": 2048,
+          "output_bytes": 4097,
+          "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+          "peak_python_mib": 3.7530059814453125,
+          "protocol_s": 0.21463679999942542,
+          "quantum_s": 0.21462650000103167,
+          "scenario_build_s": 0.0006717999985994538,
+          "serialization_s": 0.0010344000002078246,
+          "shots": 2048,
+          "total_s": 0.2163429999982327
+        },
+        {
+          "circuits": 2048,
+          "classical_s": 1.089999932446517e-05,
+          "events_processed": 2048,
+          "output_bytes": 4097,
+          "output_sha256": "9a67f4b7d0dce5947348f86ac7a43b71cff6da7e3ed4748fa2802e2874739067",
+          "peak_python_mib": 3.7530059814453125,
+          "protocol_s": 0.20705509999970673,
+          "quantum_s": 0.20704420000038226,
+          "scenario_build_s": 0.0006941999999980908,
+          "serialization_s": 0.0010243999986414565,
+          "shots": 2048,
+          "total_s": 0.20877369999834627
+        }
+      ],
+      "size": "medium"
+    },
+    {
+      "aggregate": {
+        "circuits": 128,
+        "classical_s": {
+          "max": 0.04386969999904977,
+          "mean": 0.04329232000054617,
+          "median": 0.04313190000175382,
+          "min": 0.04296900000190362,
+          "relative_stdev_percent": 0.8880489843393188,
+          "stdev": 0.000384457008061778
+        },
+        "events_processed": 128,
+        "output_bytes": 21844,
+        "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+        "peak_python_mib": {
+          "max": 1.1052675247192383,
+          "mean": 1.1041597366333007,
+          "median": 1.103653907775879,
+          "min": 1.1032476425170898,
+          "relative_stdev_percent": 0.08487100453790915,
+          "stdev": 0.0009371114601838144
+        },
+        "protocol_s": {
+          "max": 0.11922950000007404,
+          "mean": 0.11761630000037257,
+          "median": 0.11786990000109654,
+          "min": 0.11544649999996182,
+          "relative_stdev_percent": 1.1617791985860393,
+          "stdev": 0.0013664417075508802
+        },
+        "quantum_s": {
+          "max": 0.07535980000102427,
+          "mean": 0.0743239799998264,
+          "median": 0.07464389999950072,
+          "min": 0.07244919999902777,
+          "relative_stdev_percent": 1.484969660603548,
+          "stdev": 0.001103688553550471
+        },
+        "scenario_build_s": {
+          "max": 0.0023992000005819136,
+          "mean": 0.0022131200006697328,
+          "median": 0.002199000000473461,
+          "min": 0.00200810000023921,
+          "relative_stdev_percent": 7.066339051513213,
+          "stdev": 0.00015638656286417481
+        },
+        "serialization_s": {
+          "max": 0.005270300000120187,
+          "mean": 0.005116359999738052,
+          "median": 0.005116299998917384,
+          "min": 0.004878199999438948,
+          "relative_stdev_percent": 3.1947087525181272,
+          "stdev": 0.00016345280072196797
+        },
+        "shots": 128,
+        "total_s": {
+          "max": 0.12674499999957334,
+          "mean": 0.12494578000078035,
+          "median": 0.12512040000183333,
+          "min": 0.12245330000041577,
+          "relative_stdev_percent": 1.2534811165512272,
+          "stdev": 0.0015661717582374215
+        }
+      },
+      "description": "Aer depolarizing-noise BB84",
+      "name": "aer_noise",
+      "samples": [
+        {
+          "circuits": 128,
+          "classical_s": 0.04313190000175382,
+          "events_processed": 128,
+          "output_bytes": 21844,
+          "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+          "peak_python_mib": 1.103653907775879,
+          "protocol_s": 0.11786990000109654,
+          "quantum_s": 0.07473799999934272,
+          "scenario_build_s": 0.002199000000473461,
+          "serialization_s": 0.0050515000002633315,
+          "shots": 128,
+          "total_s": 0.12512040000183333
+        },
+        {
+          "circuits": 128,
+          "classical_s": 0.04299730000093405,
+          "events_processed": 128,
+          "output_bytes": 21844,
+          "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+          "peak_python_mib": 1.1052675247192383,
+          "protocol_s": 0.11544649999996182,
+          "quantum_s": 0.07244919999902777,
+          "scenario_build_s": 0.002128600001015002,
+          "serialization_s": 0.004878199999438948,
+          "shots": 128,
+          "total_s": 0.12245330000041577
+        },
+        {
+          "circuits": 128,
+          "classical_s": 0.04296900000190362,
+          "events_processed": 128,
+          "output_bytes": 21844,
+          "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+          "peak_python_mib": 1.1050729751586914,
+          "protocol_s": 0.11761290000140434,
+          "quantum_s": 0.07464389999950072,
+          "scenario_build_s": 0.00200810000023921,
+          "serialization_s": 0.005270300000120187,
+          "shots": 128,
+          "total_s": 0.12489130000176374
+        },
+        {
+          "circuits": 128,
+          "classical_s": 0.043493699999089586,
+          "events_processed": 128,
+          "output_bytes": 21844,
+          "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+          "peak_python_mib": 1.1035566329956055,
+          "protocol_s": 0.11792269999932614,
+          "quantum_s": 0.07442900000023656,
+          "scenario_build_s": 0.0023307000010390766,
+          "serialization_s": 0.005265499999950407,
+          "shots": 128,
+          "total_s": 0.12551890000031563
+        },
+        {
+          "circuits": 128,
+          "classical_s": 0.04386969999904977,
+          "events_processed": 128,
+          "output_bytes": 21844,
+          "output_sha256": "a65a001a48da1019bbec317fe7b692a7c8b3b8df68a341ef7f3fc2299898dd60",
+          "peak_python_mib": 1.1032476425170898,
+          "protocol_s": 0.11922950000007404,
+          "quantum_s": 0.07535980000102427,
+          "scenario_build_s": 0.0023992000005819136,
+          "serialization_s": 0.005116299998917384,
+          "shots": 128,
+          "total_s": 0.12674499999957334
+        }
+      ],
+      "size": "small"
+    },
+    {
+      "aggregate": {
+        "circuits": 0,
+        "classical_s": {
+          "max": 0.25904000000082306,
+          "mean": 0.25380801999999675,
+          "median": 0.25284090000059223,
+          "min": 0.25014240000018617,
+          "relative_stdev_percent": 1.3536905811477322,
+          "stdev": 0.003435775260937509
+        },
+        "events_processed": 1000,
+        "output_bytes": 4001,
+        "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+        "peak_python_mib": {
+          "max": 0.04867839813232422,
+          "mean": 0.04867839813232422,
+          "median": 0.04867839813232422,
+          "min": 0.04867839813232422,
+          "relative_stdev_percent": 0.0,
+          "stdev": 0.0
+        },
+        "protocol_s": {
+          "max": 0.25904000000082306,
+          "mean": 0.25380801999999675,
+          "median": 0.25284090000059223,
+          "min": 0.25014240000018617,
+          "relative_stdev_percent": 1.3536905811477322,
+          "stdev": 0.003435775260937509
+        },
+        "quantum_s": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "relative_stdev_percent": 0.0,
+          "stdev": 0.0
+        },
+        "scenario_build_s": {
+          "max": 6.510000093840063e-05,
+          "mean": 5.9300000430084765e-05,
+          "median": 5.7499999456922524e-05,
+          "min": 5.610000152955763e-05,
+          "relative_stdev_percent": 6.1128397035153235,
+          "stdev": 3.624913970474979e-06
+        },
+        "serialization_s": {
+          "max": 0.0007910999993328005,
+          "mean": 0.0007300599998416146,
+          "median": 0.0007203999994089827,
+          "min": 0.0007000000005064066,
+          "relative_stdev_percent": 4.8418749519011985,
+          "stdev": 3.5348592266181066e-05
+        },
+        "shots": 0,
+        "total_s": {
+          "max": 0.25989620000109426,
+          "mean": 0.25459738000026844,
+          "median": 0.25362130000212346,
+          "min": 0.2508999000001495,
+          "relative_stdev_percent": 1.3631857426628364,
+          "stdev": 0.003470635185356783
+        }
+      },
+      "description": "Weak-coherent Poisson source at mean photon number 1000",
+      "name": "poisson_large_mean",
+      "samples": [
+        {
+          "circuits": 0,
+          "classical_s": 0.25904000000082306,
+          "events_processed": 1000,
+          "output_bytes": 4001,
+          "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+          "peak_python_mib": 0.04867839813232422,
+          "protocol_s": 0.25904000000082306,
+          "quantum_s": 0.0,
+          "scenario_build_s": 6.510000093840063e-05,
+          "serialization_s": 0.0007910999993328005,
+          "shots": 0,
+          "total_s": 0.25989620000109426
+        },
+        {
+          "circuits": 0,
+          "classical_s": 0.2518815999992512,
+          "events_processed": 1000,
+          "output_bytes": 4001,
+          "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+          "peak_python_mib": 0.04867839813232422,
+          "protocol_s": 0.2518815999992512,
+          "quantum_s": 0.0,
+          "scenario_build_s": 5.729999975301325e-05,
+          "serialization_s": 0.0007203999994089827,
+          "shots": 0,
+          "total_s": 0.2526592999984132
+        },
+        {
+          "circuits": 0,
+          "classical_s": 0.25014240000018617,
+          "events_processed": 1000,
+          "output_bytes": 4001,
+          "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+          "peak_python_mib": 0.04867839813232422,
+          "protocol_s": 0.25014240000018617,
+          "quantum_s": 0.0,
+          "scenario_build_s": 5.7499999456922524e-05,
+          "serialization_s": 0.0007000000005064066,
+          "shots": 0,
+          "total_s": 0.2508999000001495
+        },
+        {
+          "circuits": 0,
+          "classical_s": 0.25513519999913115,
+          "events_processed": 1000,
+          "output_bytes": 4001,
+          "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+          "peak_python_mib": 0.04867839813232422,
+          "protocol_s": 0.25513519999913115,
+          "quantum_s": 0.0,
+          "scenario_build_s": 6.050000047252979e-05,
+          "serialization_s": 0.0007144999999582069,
+          "shots": 0,
+          "total_s": 0.2559101999995619
+        },
+        {
+          "circuits": 0,
+          "classical_s": 0.25284090000059223,
+          "events_processed": 1000,
+          "output_bytes": 4001,
+          "output_sha256": "642cf3feaf385f69e7064946a9744e5329d470d994c6984fbccb520a7fa564aa",
+          "peak_python_mib": 0.04867839813232422,
+          "protocol_s": 0.25284090000059223,
+          "quantum_s": 0.0,
+          "scenario_build_s": 5.610000152955763e-05,
+          "serialization_s": 0.0007243000000016764,
+          "shots": 0,
+          "total_s": 0.25362130000212346
+        }
+      ],
+      "size": "medium"
+    }
+  ],
+  "environment": {
+    "git_dirty": true,
+    "git_revision": "fe47075ac3ef3d26ed9bca18446e8b378091baa9",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+    "python": "3.14.5 (tags/v3.14.5:5607950, May 10 2026, 10:43:50) [MSC v.1944 64 bit (AMD64)]",
+    "python_executable": "C:\\Users\\javi\\Documents\\TFG\\.venv\\Scripts\\python.exe",
+    "qiskit": "2.4.1",
+    "qiskit_aer": "0.17.2"
+  },
+  "repeats": 5,
+  "schema_version": 1,
+  "skipped": [],
+  "warmups": 1,
+  "workload_fingerprint": "4c02dcdb41b81fc0c0afe78b21d37788cdae2732dd4d09a915792597a031774c",
+  "workload_version": 1
+}

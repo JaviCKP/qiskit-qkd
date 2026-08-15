@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from math import log2
 
-from qiskit_qkd._validation import require_minimum_number, require_probability
+from qiskit_qkd._validation import (
+    require_minimum_number,
+    require_non_negative_int,
+    require_probability,
+)
 
 
 def binary_entropy(probability: float) -> float:
@@ -18,17 +22,15 @@ def binary_entropy(probability: float) -> float:
     )
 
 
-def qber(errors: int, sifted: int) -> float:
-    """Return QBER from sifted-key error counts."""
+def qber(errors: int, sifted: int) -> float | None:
+    """Return QBER, or ``None`` when no sifted sample exists."""
 
-    if sifted < 0:
-        raise ValueError("sifted must be non-negative")
-    if errors < 0:
-        raise ValueError("errors must be non-negative")
+    errors = require_non_negative_int("errors", errors)
+    sifted = require_non_negative_int("sifted", sifted)
     if errors > sifted:
         raise ValueError("errors must not exceed sifted")
     if sifted == 0:
-        return 0.0
+        return None
     return errors / sifted
 
 
@@ -37,7 +39,7 @@ def bb84_secret_fraction(
     *,
     error_correction_efficiency: float,
 ) -> float:
-    """Return max(0, 1 - f_ec h2(Q) - h2(Q)) for simplified BB84."""
+    """Return the simplified BB84 secret fraction, zeroing insecure QBER."""
 
     qber_value = require_probability("qber", qber_value)
     error_correction_efficiency = require_minimum_number(
@@ -45,5 +47,7 @@ def bb84_secret_fraction(
         error_correction_efficiency,
         1.0,
     )
+    if qber_value >= 0.5:
+        return 0.0
     entropy = binary_entropy(qber_value)
     return max(0.0, 1.0 - error_correction_efficiency * entropy - entropy)

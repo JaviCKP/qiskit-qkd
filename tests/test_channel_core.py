@@ -23,6 +23,19 @@ class ScriptedChannel:
         return self.outcomes.pop(0)
 
 
+class TransmittanceChannel:
+    loss_db = 0.0
+
+    def __init__(self, transmittance: float) -> None:
+        self._transmittance = transmittance
+
+    def transmittance(self) -> float:
+        return self._transmittance
+
+    def transmit(self, _rng) -> bool:
+        raise AssertionError("multi-photon survival should use transmittance")
+
+
 class ScriptedSource:
     def __init__(self, emissions: list[EmissionEvent]) -> None:
         self.emissions = list(emissions)
@@ -102,3 +115,35 @@ def test_transmitted_physical_round_is_assigned_to_bob_gate() -> None:
         <= physical.arrival_time_s
         <= physical.bob_gate_end_s
     )
+
+
+def test_transmit_only_channels_sample_each_photon_independently() -> None:
+    physical = prepare_physical_round(
+        index=0,
+        scenario=scenario(),
+        source=ScriptedSource(
+            [EmissionEvent(emitted=True, photon_number=3, time_s=0.0)],
+        ),
+        channel=ScriptedChannel([True, False, True]),
+        rng=make_rng(19),
+    )
+
+    assert physical.photon_number == 3
+    assert physical.surviving_photon_number == 2
+    assert physical.transmitted is True
+
+
+def test_multi_photon_round_uses_at_least_one_survival_probability() -> None:
+    physical = prepare_physical_round(
+        index=0,
+        scenario=scenario(),
+        source=ScriptedSource(
+            [EmissionEvent(emitted=True, photon_number=3, time_s=0.0)],
+        ),
+        channel=TransmittanceChannel(transmittance=0.5),
+        rng=make_rng(0),
+    )
+
+    assert physical.photon_number == 3
+    assert physical.transmitted is True
+    assert physical.surviving_photon_number == 1
