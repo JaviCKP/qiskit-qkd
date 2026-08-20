@@ -24,8 +24,6 @@ const metricDisplay: Record<string, { label: string; help: string; unit?: string
   timing_discards: { label: 'Descartes temporales', help: 'Detecciones rechazadas por quedar fuera de la ranura temporal aceptada.' },
   dead_time_discards: { label: 'Descartes por tiempo muerto', help: 'Clics ignorados porque el detector aún se estaba recuperando.' },
   afterpulse_clicks: { label: 'Clics de afterpulse', help: 'Clics espurios producidos por memoria de una detección anterior.' },
-  eve_intercepted_fraction: { label: 'Fracción interceptada por Eve', help: 'Parte de las señales intervenida por el modelo explícito de Eve.' },
-  eve_information_estimate: { label: 'Información estimada de Eve', help: 'Estimación pedagógica de la información obtenida por Eve.' },
   chsh_s: { label: 'CHSH observado', help: 'Valor CHSH calculado con las coincidencias observadas en E91.' },
   qber_margin: { label: 'Margen hasta el umbral QBER', help: 'Diferencia entre el umbral de aborto y el QBER observado.' },
   chsh_margin: { label: 'Margen CHSH', help: 'Diferencia entre el CHSH observado y el umbral de referencia.' },
@@ -34,7 +32,7 @@ const metricDisplay: Record<string, { label: string; help: string; unit?: string
 export function SummaryDataView({ summary }: { summary: JsonObject }) {
   const metrics = metricRecord(summary)
   const entries = Object.entries(metrics)
-    .filter(([key, value]) => key !== 'secure' && typeof value !== 'object')
+    .filter(([key, value]) => isObservedKey(key) && key !== 'secure' && typeof value !== 'object')
     .map(([key, value]) => {
       const display = metricDisplay[key]
       return {
@@ -61,7 +59,7 @@ export function ClassicalResultView({ value, summary }: { value: unknown; summar
   const verificationFailed = classical.verification_passed === false || classical.verification_status === 'failed'
   return (
     <div className="space-y-4">
-      <div className={`rounded-xl border p-4 ${verificationFailed ? 'border-danger/40 bg-danger/5' : 'border-success/30 bg-success/5'}`}>
+      <div className={`rounded-panel border p-4 ${verificationFailed ? 'border-danger/40 bg-danger/5' : 'border-success/30 bg-success/5'}`}>
         <div className="flex gap-3">
           {verificationFailed ? <CircleAlert aria-hidden="true" className="mt-0.5 shrink-0 text-danger" size={20} /> : <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={20} />}
           <div>
@@ -102,9 +100,9 @@ export function DecoyResultView({ value }: { value: unknown }) {
   return (
     <div className="space-y-4">
       {Object.keys(security).length ? (
-        <div className="rounded-xl border border-violet-400/25 bg-violet-400/5 p-4">
+        <div className="rounded-panel border border-violet/25 bg-violet/[0.06] p-4">
           <div className="flex items-start gap-3">
-            <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-violet-300" size={20} />
+            <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-violet" size={20} />
             <div>
               <h4 className="text-sm font-semibold text-white">Estimación con estados decoy</h4>
               <p className="mt-1 text-sm text-slate-300">Compara intensidades distintas para acotar la contribución de pulsos de un solo fotón.</p>
@@ -119,7 +117,7 @@ export function DecoyResultView({ value }: { value: unknown }) {
         </div>
       ) : null}
       {intensities.length ? (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-panel border border-border">
           <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="bg-raised text-slate-400"><tr><th className="px-3 py-2.5">Intensidad</th><th className="px-3 py-2.5">μ</th><th className="px-3 py-2.5">Selección</th><th className="px-3 py-2.5">Pulsos</th><th className="px-3 py-2.5">Emitidos</th><th className="px-3 py-2.5">Detectados</th><th className="px-3 py-2.5">Cribados</th><th className="px-3 py-2.5">Ganancia</th><th className="px-3 py-2.5">QBER</th></tr></thead>
             <tbody className="divide-y divide-border bg-background/35">
@@ -143,7 +141,7 @@ export function ProvenanceResultView({ value }: { value: unknown }) {
   return (
     <div className="space-y-4">
       {provenance.verification_status === 'unverified_import' ? (
-        <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-amber-100" role="status">
+        <p className="rounded-panel border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning" role="status">
           Procedencia importada sin verificar. Los valores se conservan como afirmaciones del archivo y no como evidencia del runtime local.
         </p>
       ) : null}
@@ -159,7 +157,7 @@ export function ProvenanceResultView({ value }: { value: unknown }) {
         ]} />
       </div>
       {consumed.length || ignored.length ? (
-        <details className="rounded-xl border border-border bg-background/35">
+        <details className="rounded-panel border border-border bg-background/35">
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-300">Parámetros aplicados por el motor</summary>
           <div className="grid gap-4 border-t border-border p-4 md:grid-cols-2">
             <ParameterList label={`Aplicados (${consumed.length})`} values={consumed} tone="text-success" />
@@ -178,23 +176,23 @@ export function GenericStructuredResultView({ value }: { value: unknown }) {
 }
 
 function ResultCardGrid({ entries }: { entries: DisplayEntry[] }) {
-  return <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{entries.map((entry) => <div className="min-w-0 rounded-xl border border-border bg-background/40 p-3" key={entry.label}><dt className="flex items-center gap-1 text-xs text-slate-500">{entry.label}{entry.help ? <InfoTip label={entry.label} text={entry.help} /> : null}</dt><dd className="mt-1 break-words font-mono text-sm text-slate-100">{formatDisplayValue(entry.value, entry.unit)}</dd></div>)}</dl>
+  return <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{entries.map((entry) => <div className="min-w-0 rounded-panel border border-border bg-background/40 p-3" key={entry.label}><dt className="flex items-center gap-1 text-xs text-slate-500">{entry.label}{entry.help ? <InfoTip label={entry.label} text={entry.help} /> : null}</dt><dd className="mt-1 break-words font-mono text-sm text-slate-100">{formatDisplayValue(entry.value, entry.unit)}</dd></div>)}</dl>
 }
 
 function StageCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <article className="rounded-xl border border-border bg-background/40 p-3"><p className="text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">{label}</p><p className="mt-1 font-mono text-sm text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{detail}</p></article>
+  return <article className="rounded-panel border border-border bg-background/40 p-3"><p className="text-2xs font-medium uppercase tracking-[0.06em] text-slate-500">{label}</p><p className="mt-1 font-mono text-sm text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{detail}</p></article>
 }
 
 function MiniValue({ label, value }: { label: string; value: unknown }) {
-  return <div className="rounded-lg bg-background/45 p-2.5"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words font-mono text-xs text-white">{formatDisplayValue(value)}</p></div>
+  return <div className="rounded-control bg-background/45 p-2.5"><p className="text-2xs text-slate-500">{label}</p><p className="mt-1 break-words font-mono text-xs text-white">{formatDisplayValue(value)}</p></div>
 }
 
 function ProvenanceCard({ Icon, title, rows }: { Icon: typeof Cpu; title: string; rows: Array<[string, unknown]> }) {
-  return <article className="rounded-xl border border-border bg-background/40 p-4"><div className="flex items-center gap-2"><Icon aria-hidden="true" className="text-cyan" size={17} /><h4 className="text-sm font-medium text-white">{title}</h4></div><dl className="mt-3 space-y-2">{rows.filter(([, value]) => value !== undefined && value !== null).map(([label, value]) => <div className="flex min-w-0 items-start justify-between gap-3 text-xs" key={label}><dt className="shrink-0 text-slate-500">{label}</dt><dd className="min-w-0 break-all text-right font-mono text-slate-200">{formatDisplayValue(value)}</dd></div>)}</dl></article>
+  return <article className="rounded-panel border border-border bg-background/40 p-4"><div className="flex items-center gap-2"><Icon aria-hidden="true" className="text-cyan" size={17} /><h4 className="text-sm font-medium text-white">{title}</h4></div><dl className="mt-3 space-y-2">{rows.filter(([, value]) => value !== undefined && value !== null).map(([label, value]) => <div className="flex min-w-0 items-start justify-between gap-3 text-xs" key={label}><dt className="shrink-0 text-slate-500">{label}</dt><dd className="min-w-0 break-all text-right font-mono text-slate-200">{formatDisplayValue(value)}</dd></div>)}</dl></article>
 }
 
 function ParameterList({ label, values, tone }: { label: string; values: unknown[]; tone: string }) {
-  return <div><p className={`text-xs font-medium ${tone}`}>{label}</p><ul className="mt-2 grid gap-1 text-[11px] text-slate-400 sm:grid-cols-2">{values.map((value, index) => <li className="truncate font-mono" key={`${String(value)}-${index}`} title={String(value)}>• {String(value)}</li>)}</ul></div>
+  return <div><p className={`text-xs font-medium ${tone}`}>{label}</p><ul className="mt-2 grid gap-1 text-2xs text-slate-400 sm:grid-cols-2">{values.map((value, index) => <li className="truncate font-mono" key={`${String(value)}-${index}`} title={String(value)}>• {String(value)}</li>)}</ul></div>
 }
 
 function ValueCell({ value }: { value: unknown }) {
@@ -202,9 +200,19 @@ function ValueCell({ value }: { value: unknown }) {
 }
 
 function flattenEntries(value: JsonObject, prefix = ''): Array<[string, unknown]> {
-  return Object.entries(value).flatMap(([key, item]) => isRecord(item)
+  return Object.entries(value).filter(([key]) => isObservedKey(key)).flatMap(([key, item]) => isRecord(item)
     ? flattenEntries(item, prefix ? `${prefix} · ${humanizeKey(key)}` : humanizeKey(key))
     : [[prefix ? `${prefix} · ${humanizeKey(key)}` : humanizeKey(key), item] as [string, unknown]])
+}
+
+/**
+ * Result sections are Alice/Bob-facing observations.  Eve traces are
+ * available only from the explicit diagnostics API channel and must not be
+ * rendered as if they were protocol evidence if a legacy/imported payload
+ * still contains them.
+ */
+function isObservedKey(key: string): boolean {
+  return key !== 'eavesdropper' && key !== 'tags' && !key.startsWith('eve_')
 }
 
 function formatDisplayValue(value: unknown, unit?: string): string {
@@ -244,5 +252,5 @@ function intensityLabel(name: string): string {
 }
 
 function UnavailableMessage({ text }: { text: string }) {
-  return <p className="rounded-xl border border-dashed border-border bg-background/30 px-4 py-6 text-center text-sm text-slate-500">{text}</p>
+  return <p className="rounded-panel border border-dashed border-border bg-background/30 px-4 py-6 text-center text-sm text-slate-500">{text}</p>
 }

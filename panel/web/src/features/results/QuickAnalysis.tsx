@@ -35,10 +35,10 @@ export function QuickAnalysis({
     .slice(0, 3)
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-surface to-background">
+    <section className="overflow-hidden rounded-panel border border-border bg-gradient-to-br from-surface to-background">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
         <div>
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-violet-300">
+          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-violet">
             <Sparkles aria-hidden="true" size={14} /> Siguiente paso
           </p>
           <h2 className="mt-1 text-lg font-semibold text-white">Crea una curva desde este experimento</h2>
@@ -56,18 +56,18 @@ export function QuickAnalysis({
       <div className="grid gap-2 p-4 sm:grid-cols-3 sm:p-5">
         {recipes.map(({ recipe, request }) => (
           <button
-            className="group rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-violet-400/60 hover:bg-raised"
+            className="group rounded-panel border border-border bg-surface p-4 text-left transition-colors hover:border-violet/60 hover:bg-raised"
             key={recipe.id}
             onClick={() => onOpen(recipe.id, latestRun?.jobId)}
             type="button"
           >
-            <span className="flex items-center justify-between gap-2 text-violet-300">
+            <span className="flex items-center justify-between gap-2 text-violet">
               <LineChart aria-hidden="true" size={17} />
               <ArrowRight aria-hidden="true" className="opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" size={15} />
             </span>
             <span className="mt-3 block text-sm font-semibold text-white">{recipe.label}</span>
             <span className="mt-1 block text-xs leading-5 text-slate-500">{recipe.question}</span>
-            <span className="mt-3 block font-mono text-[11px] text-slate-400">
+            <span className="mt-3 block font-mono text-2xs text-slate-400">
               {curveMetricLabel(request.metric)} · {axisPointCount(request.axis.values)} puntos
             </span>
           </button>

@@ -22,7 +22,7 @@ create no-clicks or detector events.
 | Decoy intensity and photon-number sampling | Event-layer source sampling |
 | BB84 preparation and basis changes | `CircuitFactory` and `QuantumCircuit` |
 | E91 Bell-pair preparation and angular measurements | `CircuitFactory.e91_bell_measure()` |
-| Source preparation error | Sampled logical bit flip before BB84 basis encoding |
+| Source preparation error | Sampled once into `PreparedState` before Eve/channel processing; physical bit is encoded |
 | E91 Bell-pair preparation error | Sampled Pauli error on Bob's Bell-pair qubit |
 | Coherent polarization misalignment | Explicit `ry`/`rz` gates in the BB84 circuit |
 | Channel depolarization | Aer `depolarizing_error` on the circuit channel marker |
@@ -39,11 +39,14 @@ preparation and before Bob's basis change. Phase 4 uses that instruction as the
 Aer channel marker. This keeps channel state noise visible in the circuit while
 preventing fiber loss from being represented as a fake measured bit.
 
-Preparation errors are sampled before circuit construction and flip the
-prepared logical BB84 bit before basis encoding. Coherent polarization
-misalignment is represented by explicit `ry`/`rz` gates after the channel marker
-and before Bob's basis change. These are intentionally inspectable circuit
-effects, not classical post-processing shortcuts.
+Preparation errors are sampled before circuit construction and stored in a
+`PreparedState` that keeps Alice's logical bit separate from the physical bit
+encoded in the circuit. The order is logical bit → preparation error → physical
+prepared state → Eve (at `attack_position`) → channel → Bob. Coherent
+polarization misalignment is represented by explicit `ry`/`rz` gates after the
+channel marker and before Bob's basis change. These are intentionally
+inspectable circuit effects, not classical post-processing shortcuts. PDL uses
+the physical prepared bit when sampling state-dependent survival.
 
 Weak-coherent decoy behavior also stays outside Aer. The source chooses an
 intensity class and samples a Poisson photon number before the channel layer
@@ -96,6 +99,18 @@ print(result.metrics.qber)
 print(result.qiskit["noise_model"])
 ```
 
+`backend_from_scenario(scenario)` is the canonical constructor used by BB84 and
+E91. It selects an ideal sampler or builds `AerNoiseModelAdapter`, passes the
+resulting `NoiseModel`, configures scenario seeds and transpilation, and returns
+the ready backend. Experiment scripts should use this factory instead of
+recreating Aer/seed/transpilation wiring. A supplied custom backend is accepted
+only when its Aer/no-Aer boundary and noise signature match the scenario: a
+scenario with Aer state/readout noise is rejected if the backend has no
+`noise_model` or uses a non-Aer sampler, while an ideal scenario is rejected if
+the supplied backend carries a noise model. Reusing a backend configured for a
+different scenario noise signature is also rejected; create a fresh backend or
+let the factory build one.
+
 `SimulationResult.qiskit` records the primitive name, Qiskit and Aer versions,
 shots, seeds, circuit-count metadata, counts samples, transpilation settings,
 and a compact noise-model summary.
@@ -139,7 +154,11 @@ for the specific run being executed.
 Phase 5/6.2 Eve models also stay outside Aer. Intercept-resend is modeled as
 an explicit adversarial measurement and resend of a BB84 state before Bob's
 measurement. PNS is modeled as an adversarial photon-number action before Bob's
-measurement. Neither is an accidental `NoiseModel` component.
+measurement. `EveConfig.attack_position="post_loss"` (default) places that
+action after channel survival/timing, while `"pre_loss"` places it after
+`PreparedState` and before channel survival. Neither is an accidental
+`NoiseModel` component; the position is a discrete pedagogical seam rather
+than a composable two-segment channel.
 
 Phase 6 decoy-state source statistics follow the same separation. They alter
 which physical events reach Bob and how those events are summarized, but they

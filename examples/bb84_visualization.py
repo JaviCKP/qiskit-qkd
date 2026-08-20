@@ -10,10 +10,10 @@ from qiskit_qkd import (
     ChannelConfig,
     DetectorConfig,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
 )
 from qiskit_qkd.analysis import add_derived_metrics, sweep_bb84_distance
+from qiskit_qkd.backends import backend_from_scenario
 from qiskit_qkd.visualization import plot_bb84_distance_summary, save_figure
 
 
@@ -48,11 +48,7 @@ def main() -> None:
         BB84Protocol(),
         scenario,
         [0, 10, 25, 50, 75],
-        backend_factory=lambda run_scenario: QiskitSamplerBackend(
-            seed=run_scenario.seed,
-            max_circuits_per_job=256,
-            max_recorded_results=0,
-        ),
+        backend_factory=lambda run_scenario: _backend_for_scenario(run_scenario),
     )
     rows = add_derived_metrics(
         rows,
@@ -67,6 +63,12 @@ def main() -> None:
     output.parent.mkdir(exist_ok=True)
     save_figure(figure, output)
     print("saved examples/figures/bb84_distance_summary.svg")
+
+def _backend_for_scenario(scenario: Scenario):
+    backend = backend_from_scenario(scenario)
+    backend.max_circuits_per_job = 256
+    backend.max_recorded_results = 0
+    return backend
 
 
 if __name__ == "__main__":

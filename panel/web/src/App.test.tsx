@@ -144,7 +144,7 @@ test('asks before replacing an edited draft when changing medium', async () => {
   await waitFor(() => expect(useDesignerStore.getState().activeMediumId).toBe('underwater'))
   expect(useDesignerStore.getState().hasUnsavedChanges).toBe(true)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Satelite' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Satélite' }))
   expect(await screen.findByRole('dialog', { name: 'Confirmar cambio de medio' })).toBeTruthy()
   expect(useDesignerStore.getState().activeMediumId).toBe('underwater')
 })

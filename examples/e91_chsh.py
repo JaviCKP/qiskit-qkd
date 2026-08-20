@@ -9,11 +9,11 @@ from qiskit_qkd import (
     E91Protocol,
     PostProcessingConfig,
     ProtocolConfig,
-    QiskitSamplerBackend,
     Scenario,
     SourceConfig,
     bell_rows_from_result,
 )
+from qiskit_qkd.backends import backend_from_scenario
 
 
 def build_scenario(*, source_preparation_error: float = 0.0) -> Scenario:
@@ -35,14 +35,10 @@ def build_scenario(*, source_preparation_error: float = 0.0) -> Scenario:
 
 
 def run_case(label: str, scenario: Scenario) -> None:
-    result = E91Protocol().run(
-        scenario,
-        backend=QiskitSamplerBackend(
-            seed=scenario.seed,
-            max_circuits_per_job=512,
-            max_recorded_results=0,
-        ),
-    )
+    backend = backend_from_scenario(scenario)
+    backend.max_circuits_per_job = 512
+    backend.max_recorded_results = 0
+    result = E91Protocol().run(scenario, backend=backend)
     print(label)
     print(
         f"  coincidences={result.metrics.detected} "

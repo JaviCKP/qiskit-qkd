@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import nextafter
+
 import pytest
 
 from qiskit_qkd import Event
@@ -87,17 +89,12 @@ def test_postprocessing_aborts_before_reconciliation_when_qber_is_too_high() -> 
     assert result.final_key_digest is None
 
 
-def test_bb84_secret_fraction_is_zero_for_qber_above_half() -> None:
+@pytest.mark.parametrize("qber_value", (0.5, nextafter(0.5, 1.0), 1.0))
+def test_bb84_secret_fraction_is_zero_for_qber_at_or_above_half(
+    qber_value: float,
+) -> None:
     assert bb84_secret_fraction(
-        0.5,
-        error_correction_efficiency=1.0,
-    ) == 0.0
-    assert bb84_secret_fraction(
-        0.9,
-        error_correction_efficiency=1.0,
-    ) == 0.0
-    assert bb84_secret_fraction(
-        1.0,
+        qber_value,
         error_correction_efficiency=1.0,
     ) == 0.0
 

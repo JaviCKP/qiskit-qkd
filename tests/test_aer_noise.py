@@ -4,9 +4,16 @@ import pytest
 
 pytest.importorskip("qiskit_aer")
 
-from qiskit_qkd import ChannelConfig, DetectorConfig, Scenario
-from qiskit_qkd.backends import QiskitSamplerBackend
-from qiskit_qkd.protocols import BB84Protocol
+from qiskit_qkd import (
+    ChannelConfig,
+    DetectorConfig,
+    E91Config,
+    ProtocolConfig,
+    Scenario,
+    SourceConfig,
+)
+from qiskit_qkd.backends import QiskitSamplerBackend, backend_from_scenario
+from qiskit_qkd.protocols import BB84Protocol, E91Protocol
 
 
 def _aer_noise_adapter():
@@ -164,6 +171,25 @@ def test_bb84_protocol_auto_applies_aer_noise_from_scenario() -> None:
     assert result.qiskit["noise_model"]["components"] == ["channel_depolarizing"]
 
 
+def test_scenario_factory_rejects_reusing_noisy_backend_for_new_noise_values() -> None:
+    first = Scenario(
+        pulses=2,
+        clock_rate_hz=1_000_000.0,
+        seed=21,
+        channel=ChannelConfig(depolarizing_probability=0.1),
+    )
+    second = Scenario(
+        pulses=2,
+        clock_rate_hz=1_000_000.0,
+        seed=21,
+        channel=ChannelConfig(depolarizing_probability=0.2),
+    )
+    backend = backend_from_scenario(first)
+
+    with pytest.raises(ValueError, match="different scenario Aer-noise signature"):
+        backend_from_scenario(second, backend=backend)
+
+
 def test_bb84_protocol_auto_applies_readout_error_from_scenario() -> None:
     scenario = Scenario(
         pulses=64,
@@ -176,6 +202,79 @@ def test_bb84_protocol_auto_applies_readout_error_from_scenario() -> None:
 
     assert result.metrics.qber == 1.0
     assert result.qiskit["noise_model"]["components"] == ["detector_readout"]
+
+
+def test_e91_detector_readout_overrides_are_applied_to_each_qubit() -> None:
+    scenario = Scenario(
+        pulses=1,
+        clock_rate_hz=1_000_000.0,
+        seed=23,
+        protocol=ProtocolConfig(name="e91"),
+        source=SourceConfig(kind="entangled_pair", emission_probability=1.0),
+        channel=ChannelConfig(kind="ideal"),
+        detector=DetectorConfig(kind="threshold", efficiency=1.0),
+        e91=E91Config(
+            alice_detector=DetectorConfig(
+                kind="threshold",
+                efficiency=1.0,
+                readout_error_probability=1.0,
+            ),
+            bob_detector=DetectorConfig(kind="threshold", efficiency=1.0),
+        ),
+    )
+    adapter = _aer_noise_adapter().from_scenario(scenario)
+    summary = adapter.summary()
+
+    assert summary["parameters"]["alice_readout_error_probability"] == 1.0
+    assert summary["parameters"]["bob_readout_error_probability"] == 0.0
+    assert summary["parameters"]["readout_error_qubits"] == {"alice": [0]}
+    assert [
+        error["gate_qubits"]
+        for error in adapter.noise_model.to_dict()["errors"]
+        if error["type"] == "roerror"
+    ] == [[(0,)]]
+
+    backend = QiskitSamplerBackend(
+        seed=23,
+        seed_simulator=23,
+        shots_per_circuit=256,
+        noise_model=adapter.noise_model,
+    )
+    backend.measure_e91_batch([(0.0, 0.0, "psi_minus")])
+    # The ideal singlet is anti-correlated in Z.  Flipping only Alice makes
+    # all sampled readouts correlated; Bob's qubit remains untouched.
+    counts = backend.last_counts[0]
+    assert set(counts) <= {"00", "11"}
+
+
+def test_e91_protocol_auto_applies_asymmetric_readout_noise() -> None:
+    scenario = Scenario(
+        pulses=64,
+        clock_rate_hz=1_000_000.0,
+        seed=24,
+        protocol=ProtocolConfig(name="e91"),
+        source=SourceConfig(kind="entangled_pair", emission_probability=1.0),
+        channel=ChannelConfig(kind="ideal"),
+        detector=DetectorConfig(kind="threshold", efficiency=1.0),
+        e91=E91Config(
+            alice_detector=DetectorConfig(
+                kind="threshold",
+                efficiency=1.0,
+                readout_error_probability=1.0,
+            ),
+            bob_detector=DetectorConfig(kind="threshold", efficiency=1.0),
+        ),
+    )
+
+    result = E91Protocol().run(scenario)
+
+    assert result.provenance["alice_readout_error_probability"] == 1.0
+    assert result.provenance["bob_readout_error_probability"] == 0.0
+    diagnostics = result.qiskit["e91_effective_diagnostics"]
+    assert diagnostics["detector_readout_error_probabilities"] == {
+        "alice": 1.0,
+        "bob": 0.0,
+    }
 
 
 def test_transpilation_options_preserve_metadata_and_are_reported() -> None:

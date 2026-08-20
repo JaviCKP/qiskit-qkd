@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import gc
 import hashlib
 import importlib.util
@@ -16,6 +17,7 @@ import time
 import tracemalloc
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,11 @@ from qiskit_qkd.config import (
     SourceConfig,
 )
 from qiskit_qkd.protocols import BB84Protocol, E91Protocol
+from qiskit_qkd.provenance import (
+    extract_seeds,
+    scenario_provenance,
+    vcs_provenance,
+)
 from qiskit_qkd.sources import WeakCoherentDecoySource
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,6 +96,7 @@ class Workload:
     execute: Callable[[], Any]
     counters: ExecutionCounters
     events_processed: int
+    scenario: Scenario | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +129,7 @@ def _single_protocol_workload(
         execute=lambda: protocol.run(scenario, backend=backend),
         counters=counters,
         events_processed=scenario.pulses,
+        scenario=scenario,
     )
 
 
@@ -215,6 +224,7 @@ def _sweep_one_axis() -> Workload:
         execute=execute,
         counters=counters,
         events_processed=scenario.pulses * len(values),
+        scenario=scenario,
     )
 
 
@@ -253,6 +263,7 @@ def _sweep_series_repeats() -> Workload:
         execute=execute,
         counters=counters,
         events_processed=scenario.pulses * evaluations,
+        scenario=scenario,
     )
 
 
@@ -267,6 +278,7 @@ def _statevector_batch() -> Workload:
         execute=lambda: backend.measure_bb84_batch(rounds),
         counters=counters,
         events_processed=len(rounds),
+        scenario=scenario,
     )
 
 
@@ -297,6 +309,16 @@ def _poisson_large_mean() -> Workload:
         execute=execute,
         counters=ExecutionCounters(),
         events_processed=samples,
+        scenario=Scenario(
+            pulses=samples,
+            clock_rate_hz=1_000_000.0,
+            seed=20260817,
+            source=SourceConfig(
+                kind="weak_coherent",
+                decoy_intensities=(DecoyIntensity("stress", 1_000.0, 1.0),),
+            ),
+            post_processing=PostProcessingConfig(qber_abort_threshold=None),
+        ),
     )
 
 
@@ -368,6 +390,11 @@ def _run_sample(case: CaseSpec, *, track_memory: bool) -> dict[str, Any]:
     if track_memory:
         tracemalloc.stop()
     quantum_s = workload.counters.quantum_s
+    scenario_payload = (
+        scenario_provenance(workload.scenario)
+        if workload.scenario is not None
+        else None
+    )
     return {
         "scenario_build_s": scenario_build_s,
         "protocol_s": protocol_s,
@@ -381,6 +408,12 @@ def _run_sample(case: CaseSpec, *, track_memory: bool) -> dict[str, Any]:
         "events_processed": workload.events_processed,
         "output_bytes": len(serialized.encode("utf-8")),
         "output_sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+        "scenario": scenario_payload,
+        "seeds": (
+            extract_seeds(workload.scenario)
+            if workload.scenario is not None
+            else {}
+        ),
     }
 
 
@@ -415,6 +448,17 @@ def _aggregate(samples: list[dict[str, Any]]) -> dict[str, Any]:
     return aggregate
 
 
+def _primary_seed(seeds: Any) -> Any:
+    """Return the scenario seed for compact CSV, retaining full paths too."""
+
+    if not isinstance(seeds, dict):
+        return ""
+    for key in ("seed", "scenario.seed"):
+        if key in seeds:
+            return seeds[key]
+    return ""
+
+
 def _git_value(arguments: list[str]) -> str | None:
     try:
         result = subprocess.run(
@@ -436,6 +480,7 @@ def _environment() -> dict[str, Any]:
 
         aer_version = qiskit_aer.__version__
     status = _git_value(["status", "--short"])
+    vcs = vcs_provenance(ROOT)
     return {
         "python": sys.version,
         "python_executable": sys.executable,
@@ -446,6 +491,7 @@ def _environment() -> dict[str, Any]:
         "qiskit_aer": aer_version,
         "git_revision": _git_value(["rev-parse", "HEAD"]),
         "git_dirty": bool(status),
+        "git_provenance": vcs,
     }
 
 
@@ -491,12 +537,140 @@ def _write_markdown(report: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _write_csv(report: dict[str, Any], path: Path) -> None:
+    """Write one compact, machine-readable row per benchmark case.
+
+    ``result_id`` and ``manifest_ref`` are deliberately redundant with the
+    JSON report: a CSV row must remain traceable when copied out of the report.
+    """
+
+    fields = [
+        "generated_at_utc",
+        "script",
+        "result_id",
+        "manifest_ref",
+        "case",
+        "size",
+        "repeats",
+        "seed_paths",
+        "seed",
+        "scenario_digest",
+        "total_median_s",
+        "total_stdev_s",
+        "events_processed",
+        "circuits",
+        "shots",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        for case in report["cases"]:
+            aggregate = case["aggregate"]
+            samples = case.get("samples", [])
+            first = samples[0] if samples else {}
+            scenario = first.get("scenario") or {}
+            writer.writerow(
+                {
+                    "generated_at_utc": report["generated_at_utc"],
+                    "script": report["script"],
+                    "result_id": case["name"],
+                    "manifest_ref": path.with_suffix(".json").name,
+                    "case": case["name"],
+                    "size": case["size"],
+                    "repeats": report["repeats"],
+                    "seed_paths": json.dumps(first.get("seeds", {}), sort_keys=True),
+                    "seed": _primary_seed(first.get("seeds", {})),
+                    "scenario_digest": scenario.get("digest", ""),
+                    "total_median_s": aggregate["total_s"]["median"],
+                    "total_stdev_s": aggregate["total_s"]["stdev"],
+                    "events_processed": aggregate["events_processed"],
+                    "circuits": aggregate["circuits"],
+                    "shots": aggregate["shots"],
+                }
+            )
+
+
+def _benchmark_manifest(
+    report: dict[str, Any],
+    *,
+    csv_path: Path | None,
+    csv_sha256: str | None,
+    csv_row_count: int,
+) -> dict[str, Any]:
+    """Return the strict provenance envelope for a persisted benchmark run."""
+
+    script_path = Path(__file__).resolve()
+    vcs = vcs_provenance(ROOT)
+    aer = report["environment"].get("qiskit_aer")
+    scenarios: dict[str, dict[str, Any]] = {}
+    seeds: dict[str, dict[str, Any]] = {}
+    results: list[dict[str, Any]] = []
+    for case in report["cases"]:
+        samples = case.get("samples", [])
+        first = samples[0] if samples else {}
+        scenario = first.get("scenario") or {}
+        digest = scenario.get("digest", "")
+        if digest:
+            scenarios[digest] = scenario
+        case_seeds = {
+            key: value
+            for sample in samples
+            for key, value in sample.get("seeds", {}).items()
+        }
+        seeds[case["name"]] = dict(sorted(case_seeds.items()))
+        results.append(
+            {
+                "result_id": case["name"],
+                "csv_row": len(results) + 2,
+                "scenario_digest": digest,
+                "seed_paths": seeds[case["name"]],
+                "sample_result_ids": [
+                    sample.get("result_id", f"{case['name']}-repeat-{index + 1}")
+                    for index, sample in enumerate(samples)
+                ],
+            }
+        )
+    generated_at = report["generated_at_utc"]
+    return {
+        "schema_version": 1,
+        "generated_at_utc": generated_at,
+        "runtime": {
+            "python": report["environment"].get("python", sys.version),
+            "python_version": platform.python_version(),
+            "qiskit": report["environment"].get("qiskit", "unknown"),
+            "qiskit_aer": aer,
+            "qiskit_aer_status": "available" if aer else "absent",
+        },
+        "git": vcs,
+        "commit": vcs.get("commit", "unknown"),
+        "commit_confidence": vcs.get("confidence", "none"),
+        "commit_verified": vcs.get("commit_verified", False),
+        "generator": {
+            "path": str(script_path),
+            "sha256": hashlib.sha256(script_path.read_bytes()).hexdigest(),
+            "command": report["command"],
+        },
+        "seeds": seeds,
+        "scenarios": list(scenarios.values()),
+        "scenario_digests": sorted(scenarios),
+        "csv": {
+            "path": str(csv_path) if csv_path is not None else "unknown",
+            "sha256": csv_sha256 or "unknown",
+            "row_count": csv_row_count,
+        },
+        "results": results,
+        "result_ids": [result["result_id"] for result in results],
+    }
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
     parser.add_argument("--warmups", type=int, default=DEFAULT_WARMUPS)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--markdown", type=Path)
+    parser.add_argument("--csv", type=Path, help="write one row per case")
     parser.add_argument("--cases", nargs="*", metavar="NAME")
     parser.add_argument("--list-cases", action="store_true")
     return parser.parse_args()
@@ -527,6 +701,11 @@ def main() -> int:
         "workload_fingerprint": _workload_fingerprint(selected),
         "repeats": args.repeats,
         "warmups": args.warmups,
+        "generated_at_utc": datetime.now(UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        "script": str(Path(__file__).resolve()),
+        "command": [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]],
         "environment": _environment(),
         "cases": [],
         "skipped": [],
@@ -541,6 +720,8 @@ def main() -> int:
         samples = [
             _run_sample(case, track_memory=True) for _ in range(args.repeats)
         ]
+        for index, sample in enumerate(samples, start=1):
+            sample["result_id"] = f"{case.name}-repeat-{index}"
         report["cases"].append(
             {
                 "name": case.name,
@@ -551,10 +732,57 @@ def main() -> int:
             }
         )
 
+    report["seeds"] = {
+        case["name"]: sorted(
+            {
+                key: value
+                for sample in case.get("samples", [])
+                for key, value in sample.get("seeds", {}).items()
+            }.items()
+        )
+        for case in report["cases"]
+    }
+    report["scenarios"] = {
+        case["name"]: sorted(
+            {
+                sample.get("scenario", {}).get("digest", "")
+                for sample in case.get("samples", [])
+                if sample.get("scenario")
+            }
+        )
+        for case in report["cases"]
+    }
+
+    # A requested JSON report is always accompanied by a CSV and an embedded
+    # manifest.  This keeps persisted benchmark output self-describing even
+    # when a caller only archives the JSON file.
+    csv_path = args.csv
+    if args.output is not None and csv_path is None:
+        csv_path = args.output.with_suffix(".csv")
+    if csv_path is not None:
+        _write_csv(report, csv_path)
+    csv_hash = (
+        hashlib.sha256(csv_path.read_bytes()).hexdigest()
+        if csv_path is not None and csv_path.exists()
+        else None
+    )
+    report["manifest"] = _benchmark_manifest(
+        report,
+        csv_path=csv_path,
+        csv_sha256=csv_hash,
+        csv_row_count=len(report["cases"]),
+    )
     encoded = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(encoded, encoding="utf-8")
+    elif csv_path is not None:
+        # ``manifest_ref`` in each CSV row must resolve even when the caller
+        # requested only ``--csv``.
+        csv_manifest = csv_path.with_suffix(".json")
+        csv_manifest.parent.mkdir(parents=True, exist_ok=True)
+        csv_manifest.write_text(encoded, encoding="utf-8")
+        print(f"Benchmark manifest: {csv_manifest}")
     else:
         print(encoded)
     if args.markdown:

@@ -71,7 +71,7 @@ export function FieldControl({
   )
 }
 
-const controlClass = 'h-9 min-w-0 flex-1 rounded-control border border-border bg-background px-3 text-sm text-white focus:border-cyan disabled:cursor-not-allowed disabled:opacity-50'
+const controlClass = 'h-9 min-w-0 flex-1 rounded-control border border-border bg-background px-3 text-sm text-white transition-colors hover:border-border-strong focus:border-cyan disabled:cursor-not-allowed disabled:opacity-50'
 
 function NumberOrTextInput({
   field,
@@ -106,7 +106,7 @@ function NumberOrTextInput({
       {canSlide ? (
         <input
           aria-label={`${field.label_es}: ajuste deslizante`}
-          className="h-2 w-full accent-cyan"
+          className="w-full accent-cyan"
           disabled={disabled}
           max={sliderMax(field)}
           min={sliderMin(field)}

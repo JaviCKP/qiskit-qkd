@@ -275,7 +275,7 @@ export function ExecutionView({
       <div className="border-b border-border px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Paso 3</p>
+            <p className="text-2xs font-semibold uppercase tracking-[0.1em] text-slate-500">Paso 3</p>
             <h2 className="mt-1 text-base font-semibold text-white" id="execution-title">Ejecutar experimento</h2>
             <p className="mt-1 text-sm text-slate-400">La ejecución congela un snapshot; el draft seguirá siendo editable.</p>
           </div>
@@ -292,47 +292,47 @@ export function ExecutionView({
             </Button>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 rounded-xl border border-border bg-background/55 p-3 sm:grid-cols-2 xl:grid-cols-[0.9fr_0.9fr_0.9fr_1.45fr]">
+        <div className="mt-4 grid gap-3 rounded-panel border border-border bg-background/55 p-3 sm:grid-cols-2 xl:grid-cols-[0.9fr_0.9fr_0.9fr_1.45fr]">
           <label className="block">
             <span className="flex items-center gap-1 text-xs font-medium text-slate-300">Señales / pulsos <InfoTip label="Señales / pulsos" text={fieldHelp('scenario.pulses')} /></span>
             <input
               aria-label="Señales / pulsos"
-              className="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
+              className="mt-1.5 h-10 w-full rounded-control border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
               min={1}
               onChange={(event) => updateField('scenario.pulses', Number(event.target.value))}
               step={1}
               type="number"
               value={scenario.pulses}
             />
-            <span className="mt-1 block text-[11px] text-slate-500">Es el tamaño real del experimento; los shots se derivan del backend.</span>
+            <span className="mt-1 block text-2xs text-slate-500">Es el tamaño real del experimento; los shots se derivan del backend.</span>
           </label>
           <label className="block">
             <span className="flex items-center gap-1 text-xs font-medium text-slate-300">Semilla reproducible <InfoTip label="Semilla reproducible" text={fieldHelp('scenario.seed')} /></span>
             <input
               aria-label="Semilla reproducible"
-              className="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
+              className="mt-1.5 h-10 w-full rounded-control border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
               min={0}
               onChange={(event) => updateField('scenario.seed', Number(event.target.value))}
               step={1}
               type="number"
               value={scenario.seed}
             />
-            <span className="mt-1 block text-[11px] text-slate-500">Repite el muestreo con el mismo escenario y entorno.</span>
+            <span className="mt-1 block text-2xs text-slate-500">Repite el muestreo con el mismo escenario y entorno.</span>
           </label>
           <label className="block">
             <span className="flex items-center gap-1 text-xs font-medium text-slate-300">Reloj de emisión <InfoTip label="Reloj de emisión" text={fieldHelp('scenario.clock_rate_hz')} /></span>
             <input
               aria-label="Reloj de emisión"
-              className="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
+              className="mt-1.5 h-10 w-full rounded-control border border-border bg-surface px-3 font-mono text-sm text-white focus:border-cyan"
               min={1}
               onChange={(event) => updateField('scenario.clock_rate_hz', Number(event.target.value))}
               step="any"
               type="number"
               value={scenario.clock_rate_hz}
             />
-            <span className="mt-1 block text-[11px] text-slate-500">Frecuencia nominal en Hz usada para tasas y timing.</span>
+            <span className="mt-1 block text-2xs text-slate-500">Frecuencia nominal en Hz usada para tasas y timing.</span>
           </label>
-          <div className="rounded-lg border border-border bg-surface/70 p-3">
+          <div className="rounded-control border border-border bg-surface/70 p-3">
             <label className="flex cursor-pointer items-start gap-3">
               <input
                 checked={scenario.store_full_event_log}
@@ -342,7 +342,7 @@ export function ExecutionView({
               />
               <span className="min-w-0">
                 <span className="flex items-center gap-2 text-xs font-medium text-slate-200"><Database aria-hidden="true" className="text-cyan" size={14} /> Conservar todos los eventos <InfoTip label="Conservar todos los eventos" text={fieldHelp('scenario.store_full_event_log')} /></span>
-                <span className="mt-1 block text-[11px] leading-4 text-slate-500">Guarda cada muestra para inspección y descarga. Límite del panel: 20.000 eventos.</span>
+                <span className="mt-1 block text-2xs leading-4 text-slate-500">Guarda cada muestra para inspección y descarga. Límite del panel: 20.000 eventos.</span>
               </span>
             </label>
             {!scenario.store_full_event_log ? (
@@ -351,7 +351,7 @@ export function ExecutionView({
                 <span className="flex items-center gap-2">
                   <input
                     aria-label="Tamaño de la muestra de eventos"
-                    className="h-8 w-24 rounded-lg border border-border bg-background px-2 text-right font-mono text-white focus:border-cyan"
+                    className="h-8 w-24 rounded-control border border-border bg-background px-2 text-right font-mono text-white focus:border-cyan"
                     max={200}
                     min={0}
                     onChange={(event) => updateField('scenario.event_sample_size', Number(event.target.value))}
@@ -363,7 +363,7 @@ export function ExecutionView({
                 </span>
               </label>
             ) : (
-              <p className="mt-3 border-t border-warning/20 pt-3 text-[11px] text-warning">El coste de memoria crece con cada pulso.</p>
+              <p className="mt-3 border-t border-warning/20 pt-3 text-2xs text-warning">El coste de memoria crece con cada pulso.</p>
             )}
           </div>
         </div>
@@ -375,7 +375,7 @@ export function ExecutionView({
         {apiOffline ? <p className="mt-3 text-sm text-warning" role="status">La API no está disponible: ejecutarás cuando vuelva la conexión.</p> : null}
         {validationBlocked ? <p className="mt-3 text-sm text-danger">Corrige los errores de validación antes de ejecutar.</p> : null}
         {blockedAttempt && validationBlocked ? (
-          <p className="mt-3 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger" role="alert">
+          <p className="mt-3 rounded-control border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger" role="alert">
             No se puede ejecutar todavía: corrige los campos marcados y vuelve a intentarlo.
           </p>
         ) : null}
@@ -397,13 +397,19 @@ export function ExecutionView({
           </Dialog>
         ) : null}
         {displayedStatus ? (
-          <div aria-live="polite" className="mt-4 border-l-2 border-cyan/50 pl-3">
+          <div aria-live="polite" className="mt-4 rounded-control border border-cyan/25 bg-cyan/[0.04] px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-mono text-slate-300">{displayedStatus.job_id}</span>
-              <span className="text-slate-400">{statusLabel(displayedStatus.status)} · {displayedStatus.elapsed_s.toFixed(2)} s</span>
+              <span className="truncate font-mono text-slate-300">{displayedStatus.job_id}</span>
+              <span className="flex shrink-0 items-center gap-2 text-slate-400">
+                <span className="font-medium text-cyan">{statusLabel(displayedStatus.status)}</span>
+                <span aria-hidden="true" className="text-slate-700">·</span>
+                <span className="font-mono tabular-nums">{displayedStatus.elapsed_s.toFixed(2)} s</span>
+                <span aria-hidden="true" className="text-slate-700">·</span>
+                <span className="font-mono tabular-nums">{Math.round(progressPercent)} %</span>
+              </span>
             </div>
-            <div aria-label={`Progreso ${Math.round(progressPercent)} %`} className="mt-2 h-1.5 overflow-hidden bg-background" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPercent)}>
-              <div className="h-full bg-cyan transition-[width]" style={{ width: `${progressPercent}%` }} />
+            <div aria-label={`Progreso ${Math.round(progressPercent)} %`} className="mt-2 h-1.5 overflow-hidden rounded-full bg-background" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPercent)}>
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan/70 to-cyan transition-[width] duration-300 ease-emphasis" style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
         ) : null}
@@ -416,7 +422,7 @@ export function ExecutionView({
       {latestRun ? (
         <div className="p-4 sm:p-5">
           {draftChanged ? (
-            <div className="mb-4 flex gap-3 border-l-2 border-warning bg-warning/5 px-3 py-2 text-sm text-warning">
+            <div className="mb-4 flex gap-3 rounded-control border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm text-warning">
               <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={16} />
               <p>Hay cambios sin ejecutar. El resultado mostrado pertenece al snapshot <span className="font-mono">{latestRun.digest.slice(0, 12)}</span>, no al draft actual.</p>
             </div>
@@ -463,7 +469,7 @@ export function ResultDetails({ latestRun, previousRun }: { latestRun: RunSnapsh
       <ResultInterpretation presentation={presentation} result={latestRun.result} summary={summary} />
       <div className="mt-5 flex flex-wrap gap-1 border-b border-border" role="tablist">
         {tabs.map((tab) => (
-          <button aria-selected={selectedTab === tab} className={`border-b-2 px-3 py-2 text-sm ${selectedTab === tab ? 'border-cyan text-cyan' : 'border-transparent text-slate-400 hover:text-white'}`} key={tab} onClick={() => setActiveTab(tab)} role="tab" type="button">
+          <button aria-selected={selectedTab === tab} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${selectedTab === tab ? 'border-cyan text-cyan' : 'border-transparent text-slate-400 hover:border-border-strong hover:text-white'}`} key={tab} onClick={() => setActiveTab(tab)} role="tab" type="button">
             {tabLabel(tab)}
           </button>
         ))}
@@ -512,17 +518,31 @@ function ResultMetricGrid({ current, previous }: { current: JsonObject; previous
     })
   }
   return (
-    <div className="mt-4 grid grid-cols-2 border border-border bg-background/40 sm:grid-cols-4 xl:grid-cols-8">
+    <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-panel border border-border bg-background/40 sm:grid-cols-4 xl:grid-cols-8">
       {cards.map((card) => (
-        <article className="min-w-0 border-b border-r border-border p-3 last:border-r-0 sm:[&:nth-last-child(-n+4)]:border-b-0 xl:border-b-0" key={card.label}>
-          <p className="flex items-center gap-1 text-[11px] text-slate-500">{card.label}<InfoTip label={card.label} text={resultMetricHelp(card.label)} /></p>
-          <p className="mt-1 break-words font-mono text-sm tabular-nums text-white">{card.value}</p>
-          {card.delta !== null ? <p className="mt-1 text-[11px] text-slate-500">Δ {formatNumber(card.delta)}</p> : null}
+        <article className="min-w-0 border-b border-r border-border p-3 transition-colors last:border-r-0 hover:bg-white/[0.02] sm:[&:nth-last-child(-n+4)]:border-b-0 xl:border-b-0" key={card.label}>
+          <p className="flex items-center gap-1 text-2xs text-slate-500">{card.label}<InfoTip label={card.label} text={resultMetricHelp(card.label)} /></p>
+          <p className="mt-1 break-words font-mono text-sm font-medium tabular-nums text-white">{card.value}</p>
+          {/* Direction only, never green/red: whether "up" is good depends on
+              the metric (a rising QBER is bad, a rising key rate is good). */}
+          {card.delta !== null ? (
+            <p className="mt-1 font-mono text-2xs tabular-nums text-slate-500" title="Diferencia frente al run anterior">
+              {card.delta > 0 ? '▲' : card.delta < 0 ? '▼' : 'Δ'} {formatNumber(Math.abs(card.delta))}
+            </p>
+          ) : null}
         </article>
       ))}
     </div>
   )
 }
+
+/**
+ * Retention funnel across the protocol stages. Stages are an ordered sequence
+ * of one quantity, so they wear a single-hue ordinal ramp (light→dark,
+ * validated for visible step gaps against the panel surface) rather than
+ * categorical hues — five unrelated colours would imply five unrelated things.
+ */
+const funnelRamp = ['#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95']
 
 function SignalFunnel({ summary }: { summary: JsonObject }) {
   const metrics = metricRecord(summary)
@@ -536,25 +556,35 @@ function SignalFunnel({ summary }: { summary: JsonObject }) {
   const maximum = Math.max(0, ...stages.map((stage) => stage.value ?? 0))
   if (maximum === 0) return null
   return (
-    <section aria-label="Recorrido de las señales" className="mt-4 rounded-xl border border-border bg-background/35 p-3">
-      <p className="text-xs font-medium text-slate-400">Recorrido de la muestra</p>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+    <section aria-label="Recorrido de las señales" className="mt-4 rounded-panel border border-border bg-background/35 p-3 sm:p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs font-medium text-slate-300">Recorrido de la muestra</p>
+        <p className="text-2xs text-slate-500">Fracción que sobrevive en cada etapa</p>
+      </div>
+      <ul className="mt-3 space-y-1.5">
         {stages.map((stage, index) => {
           const ratio = stage.value === null ? 0 : stage.value / maximum
+          const previous = stages[index - 1]?.value ?? null
+          const step = previous && stage.value !== null && previous > 0 ? stage.value / previous : null
           return (
-            <div className="min-w-0" key={stage.label}>
-              <div className="flex h-12 items-end justify-center rounded-lg bg-surface/70 px-2 pt-2">
-                <div
-                  className={`min-h-1 w-full rounded-t ${index < 2 ? 'bg-violet-400/70' : index < 4 ? 'bg-cyan/75' : 'bg-emerald-400/75'}`}
-                  style={{ height: `${Math.max(8, ratio * 100)}%` }}
+            <li className="flex items-center gap-3" key={stage.label}>
+              <span className="w-24 shrink-0 truncate text-2xs text-slate-400" title={stage.label}>{stage.label}</span>
+              <span className="relative h-5 min-w-0 flex-1 overflow-hidden rounded bg-surface/70">
+                <span
+                  className="absolute inset-y-0 left-0 rounded transition-[width] duration-500 ease-emphasis"
+                  style={{ width: `${Math.max(0.6, ratio * 100)}%`, backgroundColor: funnelRamp[index] }}
                 />
-              </div>
-              <p className="mt-2 truncate text-[11px] text-slate-500">{stage.label}</p>
-              <p className="truncate font-mono text-xs text-white">{stage.value === null ? '—' : stage.value.toLocaleString('es-ES')}</p>
-            </div>
+              </span>
+              <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-white">
+                {stage.value === null ? '—' : stage.value.toLocaleString('es-ES')}
+              </span>
+              <span className="hidden w-14 shrink-0 text-right font-mono text-2xs tabular-nums text-slate-500 sm:block">
+                {step === null ? '' : `${(step * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })} %`}
+              </span>
+            </li>
           )
         })}
-      </div>
+      </ul>
     </section>
   )
 }
@@ -647,7 +677,9 @@ function EventExplorer({
     return accumulator
   }, {})
   const maxCount = Math.max(1, ...Object.values(counts))
-  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).slice(0, 8)
+  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))))
+    .filter((column) => column !== 'tags' && !column.startsWith('eve_') && column !== 'eavesdropper')
+    .slice(0, 8)
   const fileName = `${safeFileName(runLabel)}-eventos`
   return (
     <div className="space-y-4">
@@ -677,7 +709,7 @@ function EventExplorer({
         ))}
       </div>
       {rows.length ? (
-        <details className="rounded-xl border border-border bg-background/40">
+        <details className="rounded-panel border border-border bg-background/40">
           <summary className="cursor-pointer px-3 py-2.5 text-sm text-slate-300">Explorar tabla de muestras</summary>
           <div className="max-h-80 overflow-auto border-t border-border">
             <table className="w-full min-w-[720px] text-left text-xs">

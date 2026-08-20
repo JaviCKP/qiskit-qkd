@@ -82,8 +82,9 @@ class ThresholdDetector:
     double_click_policy: str = "discard"
     dead_time_s: float = 0.0
     afterpulse_probability: float = 0.0
+    afterpulse_tau_s: float | None = None
     _available_at_s: float = field(default=-math.inf, init=False, repr=False)
-    _has_prior_detection: bool = field(default=False, init=False, repr=False)
+    _last_detection_time_s: float | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.efficiency = require_probability("efficiency", self.efficiency)
@@ -105,6 +106,13 @@ class ThresholdDetector:
             "afterpulse_probability",
             self.afterpulse_probability,
         )
+        if self.afterpulse_tau_s is not None:
+            self.afterpulse_tau_s = require_finite_number(
+                "afterpulse_tau_s",
+                self.afterpulse_tau_s,
+            )
+            if self.afterpulse_tau_s <= 0.0:
+                raise ValueError("afterpulse_tau_s must be positive or None")
 
     @property
     def dark_count_probability(self) -> float:
@@ -174,13 +182,14 @@ class ThresholdDetector:
             and rng.random()
             < self.background_count_probability(background_count_rate_hz)
         )
+        afterpulse_probability = self._afterpulse_probability(detection_time_s)
         afterpulse_click = (
             not signal_click
             and not dark_click
             and not background_click
-            and self._has_prior_detection
-            and self.afterpulse_probability > 0.0
-            and rng.random() < self.afterpulse_probability
+            and self._last_detection_time_s is not None
+            and afterpulse_probability > 0.0
+            and rng.random() < afterpulse_probability
         )
 
         if signal_click and (dark_click or background_click):
@@ -242,9 +251,26 @@ class ThresholdDetector:
         detection_time_s: float,
     ) -> DetectionResult:
         if result.detected or result.detector_fired:
-            self._has_prior_detection = True
+            self._last_detection_time_s = detection_time_s
             self._available_at_s = detection_time_s + self.dead_time_s
         return result
+
+    def _afterpulse_probability(self, detection_time_s: float) -> float:
+        """Return the afterpulse probability for this gate.
+
+        With no time constant this deliberately returns the legacy constant
+        per-gate probability.  Otherwise the previous detector firing time is
+        used and the exponential is clamped to ``[0, p0]`` for numerical and
+        out-of-order timestamp safety.
+        """
+
+        p0 = self.afterpulse_probability
+        if p0 == 0.0 or self._last_detection_time_s is None:
+            return 0.0
+        if self.afterpulse_tau_s is None:
+            return p0
+        delta_t = max(0.0, detection_time_s - self._last_detection_time_s)
+        return min(1.0, max(0.0, p0 * math.exp(-delta_t / self.afterpulse_tau_s)))
 
     def _resolve_double_click(
         self,

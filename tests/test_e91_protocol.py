@@ -206,6 +206,47 @@ def test_e91_protocol_auto_applies_aer_noise_from_scenario() -> None:
     assert noisy.qiskit["noise_model"]["components"] == ["channel_depolarizing"]
 
 
+@pytest.mark.parametrize(
+    ("pair_mean", "expected_emitted", "expect_multipair"),
+    [
+        (0.0, 0, False),
+        (2.0, None, True),
+        (None, None, True),
+    ],
+)
+def test_e91_poisson_pair_emission_diagnostics(
+    pair_mean: float | None,
+    expected_emitted: int | None,
+    expect_multipair: bool,
+) -> None:
+    scenario = replace(
+        e91_scenario(seed=105, pulses=512),
+        e91=E91Config(pair_emission_model="poisson", pair_mean=pair_mean),
+    )
+
+    first = E91Protocol().run(scenario)
+    second = E91Protocol().run(scenario)
+    diagnostics = first.qiskit["e91_effective_diagnostics"]
+
+    assert first.metrics == second.metrics
+    assert first.classical == second.classical
+    assert diagnostics == second.qiskit["e91_effective_diagnostics"]
+    assert diagnostics["pair_emission_model"] == "poisson"
+    assert diagnostics["backend_simulates_multipair"] is False
+    assert diagnostics["backend_measurement_model"] == (
+        "single_bell_pair_representative"
+    )
+    assert diagnostics["multipair_model"] == "event_layer_poisson_bell_representative"
+    if expected_emitted is not None:
+        assert first.metrics.emitted == expected_emitted
+        assert diagnostics["pair_count_total"] == expected_emitted
+        assert diagnostics["multipair_slots"] == 0
+    else:
+        assert diagnostics["pair_mean"] == (2.0 if pair_mean is not None else 1.0)
+        assert diagnostics["pair_count_total"] >= first.metrics.emitted
+        assert (diagnostics["multipair_slots"] > 0) is expect_multipair
+
+
 def test_e91_rejects_non_e91_scenarios() -> None:
     with pytest.raises(ValueError):
         E91Protocol().run(

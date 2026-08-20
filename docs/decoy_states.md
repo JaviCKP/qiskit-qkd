@@ -116,8 +116,10 @@ Decoy state metadata travels through the existing BB84 event flow:
    public-style boolean `surviving_photon_number > 0`.
 3. Timing assigns that signal to Bob's gate or marks it as an out-of-window
    event.
-4. Eve, when configured, acts only on surviving signal opportunities and stays
-   independent from accidental loss, background light, and detector effects.
+4. Eve, when configured, acts at `EveConfig.attack_position`. The default
+   `post_loss` position sees only surviving, timing-valid signal opportunities;
+   `pre_loss` acts after source preparation and before channel survival. Eve
+   remains separate from accidental background and detector effects.
 5. The threshold detector decides whether Bob records a click.
 6. Sifting and classical post-processing use only Alice/Bob public protocol
    data, while `SimulationResult.decoy` keeps simulator-side diagnostics.
@@ -229,13 +231,21 @@ eve = EveConfig(
     kind="photon_number_splitting",
     pns_split_probability=1.0,
     pns_block_single_photon_probability=0.25,
+    attack_position="pre_loss",
 )
 ```
 
 For multi-photon pulses, Eve keeps one photon and forwards the same BB84 state
 to Bob. She does not introduce basis errors, but she knows the bit whenever the
-event becomes sifted. For single-photon pulses, optional blocking can mimic
-loss and makes the attack visible in decoy gains.
+event becomes sifted. With `attack_position="post_loss"` (the default), the
+split is attempted only when at least two photons survived the channel. With
+`"pre_loss"`, Eve can split the emitted multi-photon pulse before channel loss
+and the channel then samples survival of what she forwards. For single-photon
+pulses, optional blocking can mimic loss and makes the attack visible in decoy
+gains.
+
+`attack_position` is a discrete placement for this pedagogical model; it does
+not expose a composable two-segment Alice--Eve--Bob channel.
 
 PNS event diagnostics include:
 
@@ -250,9 +260,11 @@ tags["eve_knows_bit"]
 ## Boundary
 
 The current estimator is asymptotic and diagnostic. It does not include
-finite-key confidence intervals, composable security, coherent attacks,
+finite-key security bounds, composable security, coherent attacks,
 authentication failure, photon-number-resolving detectors, or detector-control
-attacks.
+attacks. Generic sweep summaries may still attach Wilson/Student-t intervals to
+observed Monte Carlo proportions or repeat means; those descriptive intervals
+must not be confused with finite-key decoy confidence regions.
 
 Dynamic schedules do not yet mutate individual entries inside
 `source.decoy_intensities`. Use static decoy classes for Phase 6, or schedule

@@ -128,11 +128,20 @@ def run_scenario_job(
     )
     if job_control is not None:
         job_control.checkpoint()
-    result_summary = normalize_json_object(
-        result.summary(),
-        path="result_summary",
+    # Keep the simulator-side envelope available to the job/artifact store,
+    # but make the default API projection an Alice/Bob observation.  In
+    # particular, ``SimulationResult.to_dict()`` contains scenario and Eve
+    # traces which are useful for internal analysis but are not protocol
+    # observations.  The authoritative extractor is additive so existing
+    # metric counters remain compatible while consumers get the evidence-
+    # backed QBER/threshold/rate/verification interpretation explicitly.
+    internal_result = _result_payload(result.to_dict())
+    result_payload = _observed_result_payload(result)
+    result_summary = _observed_result_summary(result)
+    diagnostics = normalize_json_object(
+        result.to_internal_diagnostics_dict(),
+        path="diagnostics",
     )
-    result_payload = _result_payload(result.to_dict())
     _annotate_payload_provenance(
         result_summary,
         requested_scenario_digest=requested_digest,
@@ -145,9 +154,27 @@ def run_scenario_job(
         effective_scenario_digest=result.scenario.digest(),
         resolution_time_s=0.0,
     )
+    _annotate_payload_provenance(
+        internal_result,
+        requested_scenario_digest=requested_digest,
+        effective_scenario_digest=result.scenario.digest(),
+        resolution_time_s=0.0,
+    )
+    _annotate_payload_provenance(
+        diagnostics,
+        requested_scenario_digest=requested_digest,
+        effective_scenario_digest=result.scenario.digest(),
+        resolution_time_s=0.0,
+    )
     return {
         "result_summary": result_summary,
         "result": result_payload,
+        # ``diagnostics`` is intentionally a separate, opt-in channel.  The
+        # complete legacy envelope is retained for durable internal storage so
+        # archive/restart compatibility does not force Eve data into the
+        # observed projection.
+        "diagnostics": diagnostics,
+        "result_internal": internal_result,
     }
 
 
@@ -478,10 +505,22 @@ def _sweep_result_payload(
     remain factorized at the envelope level regardless of sweep size.
     """
 
+    # Sweep rows originate in the analysis compatibility helper, which still
+    # carries simulator-only ``eve_*`` counters for archival/diagnostic users.
+    # The panel endpoint is an observed view, so apply the same recursive
+    # boundary as single-run results before compacting the DTO.
+    observed_rows = [
+        _strip_internal_fields(row)
+        for row in rows
+    ]
+    observed_summary = [
+        _strip_internal_fields(row)
+        for row in summary
+    ]
     return compact_sweep_payload(
-        rows,
+        observed_rows,
         requested_scenario_digest=requested_scenario_digest,
-        summary=summary,
+        summary=observed_summary,
     )
 
 
@@ -1143,3 +1182,49 @@ def _result_payload(result: dict[str, Any]) -> dict[str, Any]:
     # When a caller explicitly requests the full event log, truncating it here
     # would contradict both ``store_full_event_log`` and ``aggregated=False``.
     return normalize_json_object(result, path="result")
+
+
+def _observed_result_payload(result: Any) -> dict[str, Any]:
+    """Build the public Alice/Bob result projection for one simulation."""
+
+    payload = normalize_json_object(
+        _strip_internal_fields(result.to_observed_dict()),
+        path="result",
+    )
+    payload["authoritative_metrics"] = normalize_json_object(
+        result.authoritative_metrics(),
+        path="authoritative_metrics",
+    )
+    return payload
+
+
+def _observed_result_summary(result: Any) -> dict[str, Any]:
+    """Build a compact public summary without simulator-side Eve fields."""
+
+    summary = _strip_internal_fields(result.summary())
+    summary["authoritative_metrics"] = normalize_json_object(
+        result.authoritative_metrics(),
+        path="authoritative_metrics",
+    )
+    summary["diagnostics_available"] = True
+    return normalize_json_object(summary, path="result_summary")
+
+
+def _strip_internal_fields(value: Any) -> Any:
+    """Recursively remove simulator-only Eve labels from a JSON value."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: _strip_internal_fields(item)
+            for key, item in value.items()
+            if not (
+                isinstance(key, str)
+                and (
+                    key.startswith("eve_")
+                    or key in {"eavesdropper", "tags"}
+                )
+            )
+        }
+    if isinstance(value, list):
+        return [_strip_internal_fields(item) for item in value]
+    return value

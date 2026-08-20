@@ -20,6 +20,9 @@ def _flatten(value: dict[str, object]) -> dict[str, object]:
             )
         else:
             result[f"scenario.{section}"] = section_value
+    eavesdropper = value.get("eavesdropper")
+    if isinstance(eavesdropper, dict) and "attack_position" not in eavesdropper:
+        result["eavesdropper.attack_position"] = "post_loss"
     return result
 
 
@@ -38,6 +41,21 @@ def test_every_published_field_has_a_dataclass_default_and_unique_key() -> None:
     assert len(keys) == len(set(keys))
     assert set(keys) == set(defaults)
     assert all(field["default"] == defaults[field["key"]] for field in fields)
+
+
+def test_attack_position_metadata_publishes_choices_and_scientific_scope() -> None:
+    payload = domain_metadata_payload()
+    field = next(
+        field
+        for field in payload["fields"]
+        if field["key"] == "eavesdropper.attack_position"
+    )
+
+    assert field["default"] == "post_loss"
+    assert field["options"] == ["post_loss", "pre_loss"]
+    assert field["applicable_protocols"] == ["bb84"]
+    assert "post_loss" in field["scope"]
+    assert "pre_loss" in field["scope"]
 
 
 def test_medium_payloads_are_valid_scenarios_and_include_aliases() -> None:

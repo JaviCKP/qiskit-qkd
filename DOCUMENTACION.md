@@ -27,7 +27,7 @@ El repositorio está estructurado en base a fases incrementales de madurez:
 5.  **Fase 4.1 (Condiciones de Comunicación Dinámicas)**: Capa de perfiles temporales paramétricos que permite variar lentamente las condiciones del canal (ej. aumentar la luz de fondo de manera exponencial o cambiar el error de preparación) a lo largo del tiempo para caracterizaciones temporales.
 6.  **Fase 5 (Adversario / Espionaje)**: Introducción de modelos explícitos de espionaje en el canal cuántico, implementando el ataque pedagógico de interceptación y reenvío (`InterceptResendEve`).
 7.  **Fase 6 (Estados Señuelo / Decoy States)**: Implementación de fuentes de estados señuelo coherentemente atenuados con muestreo de número de fotones mediante distribución de Poisson, supervivencia binomial de fotones en fibra y estadísticas por intensidad.
-8.  **Fase 6.1 (Imperfecciones Avanzadas de Fibra)**: Añade modelos de primer orden para PMD, dispersión cromática, pérdida dependiente de polarización y crosstalk Raman. Estos efectos se mantienen en la capa de eventos y caracterización: PMD/CD modifican el jitter efectivo de llegada, PDL modifica la transmitancia según el estado BB84 preparado y Raman suma una tasa de fondo óptico al detector.
+8.  **Fase 6.1 (Imperfecciones Avanzadas de Fibra)**: Añade modelos de primer orden para PMD, dispersión cromática, pérdida dependiente de polarización y crosstalk Raman. Estos efectos se mantienen en la capa de eventos y caracterización: PMD/CD modifican el jitter efectivo de llegada, PDL modifica la transmitancia según el `prepared_bit` físico de BB84 y Raman suma una tasa de fondo óptico al detector.
 9.  **Fase 6.2 (Diagnóstico Decoy Asintótico y PNS)**: Añade estimación asintótica vacuum+weak para cotar `Y1`, `Q1` y `e1`, calcula una tasa decoy diagnóstica y modela un ataque de photon-number splitting (`PhotonNumberSplittingEve`) sobre pulsos multifotón.
 10. **Fase 7 (E91 y CHSH)**: Añade protocolo E91 basado en pares Bell, medidas angulares de Alice/Bob, coincidencias, QBER de clave, diagnóstico CHSH (`S`) y filas planas para graficar correlaciones.
 11. **Fase 8 (Familias de Canales Ópticos)**: Añade canales no-fibra para QKD en espacio profundo, espacio libre/atmosférico/satélite y medio subacuático. Estos canales modelan pérdidas geométricas, extinción atmosférica, scintillation, jitter de apuntamiento, extinción Beer-Lambert y ensanchamiento temporal por scattering, manteniendo el ruido cuántico de estado en la capa Qiskit/Aer.
@@ -42,17 +42,16 @@ El flujo completo de una simulación sigue el siguiente camino lógico:
 ```mermaid
 graph TD
     A["Scenario & Configs"] --> B["BB84Protocol.run"]
-    B --> C["prepare_physical_round"]
-    C --> D["Source (Emisión)"]
-    D --> E["Channel (Supervivencia fotónica)"]
-    E --> F["assign_timing (Ventana temporal)"]
-    
-    F --> G{"¿Señal en compuerta Bob?"}
-    G -->|"Sí"| H{"¿Eve configurada?"}
-    H -->|"Sí"| I["Eve: InterceptResendEve"]
+    B --> C["PreparedState: bit lógico + error de preparación"]
+    C --> D{"attack_position"}
+    D -->|"pre_loss"| E["Eve antes de pérdida"]
+    D -->|"post_loss (default)"| F["Source + channel survival"]
+    E --> F
+    F --> G["assign_timing (Ventana temporal)"]
+    G --> H{"¿Señal en compuerta Bob?"}
+    H -->|"Sí"| I["Eve post_loss si corresponde"]
     I --> J["CircuitFactory.bb84_prepare_measure"]
-    H -->|"No"| J
-    G -->|"No"| K["Saltar circuito cuántico"]
+    H -->|"No"| K["Saltar circuito cuántico"]
     
     J --> L["QiskitSamplerBackend"]
     L -->|"Medida Cuántica (Qiskit + Aer)"| M["Bit medido por Bob"]
@@ -71,18 +70,18 @@ graph TD
 ### Detalle del Flujo de Ejecución:
 1.  **Configuración**: Se define un `Scenario` que contiene los objetos de configuración de la fuente (`SourceConfig`), el canal (`ChannelConfig`), el detector (`DetectorConfig`), el timing (`TimingConfig`), el post-procesamiento (`PostProcessingConfig`), el espía opcional (`EveConfig`) y los perfiles dinámicos (`DynamicConfig`).
 2.  **Resolución de Parámetros**: Si se realiza un barrido temporal, el `ParameterResolver` evalúa el tiempo $t$ y genera un `Scenario` estático efectivo sustituyendo los valores dinámicos.
-3.  **Loop de Pulsos**: Para cada pulso de Alice (definido por `pulses` en el `Scenario`):
-    *   La fuente decide si emite y cuántos fotones genera (fotón único o Poisson).
-    *   El canal físico evalúa cuántos fotones sobreviven al enlace (`surviving_photon_number`). Para PDL, la transmitancia efectiva depende del bit y base preparados por Alice. Para canales con fading (`free_space` o `underwater`), se muestrea primero una transmitancia instantánea por pulso (`sample_transmittance(rng)`) y todos los fotones de ese pulso usan esa misma probabilidad. El booleano `transmitted` se mantiene como resumen: es verdadero cuando al menos un fotón sobrevivió.
-    *   El módulo de `timing` calcula cuándo llega la señal superviviente y determina si cae dentro de la ventana de detección (compuerta o gate de Bob). PMD, dispersión cromática y scattering subacuático se incorporan como ensanchamiento temporal adicional sobre el jitter gaussiano. Si cae dentro, se le asigna un slot de Bob.
-4.  **Capa de Adversario**: Si Eve está activa en un pulso con señal superviviente y asignada a compuerta, el modelo `InterceptResendEve` mide el estado BB84 en una base aleatoria y reenvía su resultado a Bob. El modelo `PhotonNumberSplittingEve` usa el número de fotones de la fuente para dividir pulsos multifotón sin introducir QBER y, opcionalmente, bloquear fotones únicos. No modela ataques coherentes o colectivos.
-5.  **Ejecución Cuántica en Batch**: Para todos los pulsos donde existe una oportunidad de señal asignada a una compuerta activa en Bob, se construye un circuito BB84. Es un circuito por oportunidad de señal de umbral, no uno por fotón individual. En el camino ideal sin ruido Aer, sin transpilación y sin sampler externo, el `QiskitSamplerBackend` obtiene las probabilidades finales del `Statevector` de Qiskit y las muestrea con su propio RNG reproducible; así las rotaciones parciales (`ry`/`rz`) producen estadística física aunque haya un solo shot por ronda. Cuando hay ruido Aer, transpilación o sampler externo, los circuitos se ejecutan mediante la primitiva correspondiente y se procesan sus histogramas.
+3.  **Loop de Pulsos**: Para cada pulso de Alice (definido por `pulses` en el `Scenario`), se crea un `PreparedState`: bit lógico de Alice, error de preparación muestreado una sola vez y `prepared_bit` físico. El orden físico es `bit lógico → error de preparación → estado físico → Eve → canal según attack_position → Bob`.
+    *   En `post_loss` (predeterminado), la fuente y el canal muestrean emisión y supervivencia (`surviving_photon_number`) antes de Eve. En `pre_loss`, Eve actúa sobre el número de fotones emitido y después el canal muestrea la supervivencia.
+    *   PDL usa el `prepared_bit` físico y la base, no el bit lógico de Alice. Para canales con fading (`free_space` o `underwater`), se muestrea primero una transmitancia instantánea por pulso (`sample_transmittance(rng)`) y todos los fotones de ese pulso usan esa misma probabilidad. El booleano `transmitted` resume si sobrevivió al menos un fotón.
+    *   El módulo de `timing` calcula cuándo llega la señal superviviente y determina si cae dentro de la ventana de detección. PMD, dispersión cromática y scattering subacuático se incorporan como ensanchamiento temporal adicional sobre el jitter gaussiano.
+4.  **Capa de Adversario**: `InterceptResendEve` mide el estado físico en una base aleatoria y reenvía su resultado. `PhotonNumberSplittingEve` puede dividir pulsos multifotón sin introducir QBER y, opcionalmente, bloquear fotones únicos. `attack_position` es una elección discreta pedagógica (`post_loss` o `pre_loss`), no un canal arbitrario composable de dos segmentos.
+5.  **Ejecución Cuántica en Batch**: Para todos los pulsos donde existe una oportunidad de señal asignada a una compuerta activa en Bob, se construye un circuito BB84. Es un circuito por oportunidad de señal de umbral, no uno por fotón individual. El constructor canónico `backend_from_scenario(scenario)` activa la ruta ideal o Aer, las semillas y la transpilación; el backend recibe el `PreparedState` ya muestreado y no vuelve a muestrear el error de preparación. En el camino ideal sin ruido Aer, sin transpilación y sin sampler externo, obtiene las probabilidades finales del `Statevector` de Qiskit y las muestrea con su propio RNG reproducible.
 6.  **Simulación del Detector**: El `ThresholdDetector` de Bob procesa cada slot de tiempo:
     *   Verifica si el detector estaba inactivo debido al **tiempo muerto** (`dead_time_s`) de un click anterior.
     *   Si está disponible, aplica la **eficiencia del detector** sobre los fotones cuánticos supervivientes.
     *   Modela la aparición de **cuentas oscuras**, **luz de fondo** (background clicks) y **crosstalk Raman** probabilísticos en la compuerta.
     *   Resuelve coincidencias (señal + ruido) según la **política de doble click** (`double_click_policy`).
-    *   Modela **post-pulsos** (afterpulses) condicionados a detecciones clásicas previas.
+    *   Modela **post-pulsos** (afterpulses) condicionados a detecciones clásicas previas. Con `afterpulse_tau_s` la probabilidad por compuerta es `p0 exp(-Δt/τ)` desde la última activación; con `afterpulse_tau_s=None` se conserva la probabilidad legacy constante `p0`.
 7.  **Sifting (Criba)**: Alice y Bob comparan públicamente sus bases de preparación y medición para los slots donde Bob registró detección. Se descartan aquellos slots con bases cruzadas.
 8.  **Post-procesamiento Clásico**:
     *   Se revela una fracción de la clave cribada para estimar la tasa de error de bit cuántico (**QBER**).
@@ -95,7 +94,7 @@ Los eventos (`Event`) almacenan tanto `photon_number` como `surviving_photon_num
 
 Para análisis y gráficas, `decoy_rows_from_result(result)` convierte el resumen decoy anidado en filas planas con `row_type="intensity"` o `row_type="security"`, aptas para CSV, Pandas o visualización directa.
 
-E91 se implementa como un protocolo separado (`E91Protocol`), no como una variante de BB84. Qiskit prepara y mide el par Bell, mientras la capa de eventos conserva pérdidas del brazo de Bob, timing, detectores y ruido óptico de Bob. Como la fuente se modela co-localizada con Alice, el detector de Alice mantiene cuentas oscuras, tiempo muerto y post-pulsos, pero no recibe el fondo de canal ni el crosstalk Raman acumulado en la fibra de Bob. `SimulationResult.bell` almacena las correlaciones por par de ajustes y `bell_rows_from_result(result)` las convierte en filas listas para gráficas.
+E91 se implementa como un protocolo separado (`E91Protocol`), no como una variante de BB84. Qiskit prepara y mide un par Bell representativo, mientras la capa de eventos conserva pérdidas del brazo de Bob, timing, detectores y ruido óptico de Bob. Alice y Bob usan detectores de umbral independientes: `E91Config.alice_detector` y `E91Config.bob_detector` permiten sobrescribir el detector global por brazo. La fuente admite `pair_emission_model="bernoulli"` (legacy, un par) o `"poisson"`/`"multi_pair"` con `pair_mean`; el muestreo multipar es efectivo en la capa de eventos. El backend cuántico sigue midiendo un circuito Bell representativo por oportunidad y registra `backend_simulates_multipair=false`, por lo que no es una simulación cuántica n-pair ni una prueba de seguridad. Como la fuente se modela co-localizada con Alice, el detector de Alice mantiene cuentas oscuras, tiempo muerto y post-pulsos, pero no recibe el fondo de canal ni el crosstalk Raman acumulado en la fibra de Bob. `SimulationResult.bell` almacena las correlaciones por par de ajustes y `bell_rows_from_result(result)` las convierte en filas listas para gráficas.
 
 ### Lectura científica de resultados y procedencia
 
@@ -131,9 +130,23 @@ origen en `provenance.archive_load`; `to_legacy_dict()` y
 lossy. Cargar un archivo histórico no sustituye su versión productora ni
 inventa un `effective_model` con el runtime lector.
 
-La procedencia actual no incluye un digest del checkout/commit ni la versión
-del runtime de Python; para reproducción a largo plazo deben archivarse aparte
-la revisión de control de versiones y el entorno bloqueado.
+La procedencia de las ejecuciones nuevas incluye `python_version`, versiones de
+Qiskit/Aer, `commit`, `commit_confidence`, estado dirty e
+`implementation_hash` cuando están disponibles. Un commit que no puede
+verificarse se marca como `unknown` con confianza `none`/`unavailable`; nunca
+se sustituye por la revisión del lector. Para una unidad versionada de tesis,
+`qiskit_qkd.experiments.write_artifact(...)` persiste atómicamente un manifiesto JSON y su
+CSV: UTC, commit/confianza, versiones, semillas, escenario serializado y
+digest, hashes del CSV y del script, comando, y cobertura de resultados por
+`result_id`.
+
+El extractor `extract_authoritative_metrics(result)` ofrece una vista pública
+estable con `qber_defined`/`qber_value` (QBER nulo si no hay muestra), decisión
+de umbral y origen de la evidencia, aplicabilidad/estado de tasa y estado de
+verificación. Las filas observadas (`observed_metric_rows_from_results`) no
+incluyen campos `eve_*`; esos diagnósticos pertenecen a la vista interna del
+simulador. Alice y Bob no reciben la información real de Eve, y el panel solo
+la muestra mediante una opción explícita de diagnósticos.
 
 ---
 
@@ -175,6 +188,12 @@ donde `pmd_coefficient_ps_sqrt_km` está en ps/$\sqrt{\text{km}}$ y $L$ en km.
 Para dispersión cromática:
 $$\sigma_{\text{CD}} = |D_{\lambda}| L \Delta\lambda$$
 donde `chromatic_dispersion_ps_nm_km` está en ps/(nm km) y `source_spectral_width_nm` representa la anchura espectral usada por el modelo.
+
+La anchura espectral es una propiedad física de la fuente. Por compatibilidad
+con el contrato wire y con los digests históricos se mantiene actualmente bajo
+`ChannelConfig` como `channel.source_spectral_width_nm`; el snapshot efectivo
+deja visible su uso y una migración futura podrá moverlo a `SourceConfig` sin
+reinterpretar archivos antiguos.
 
 El jitter efectivo de llegada se combina en cuadratura:
 $$\sigma_{\text{eff}} = \sqrt{\sigma_{\text{jitter}}^2 + \sigma_{\text{PMD}}^2 + \sigma_{\text{CD}}^2}$$
@@ -286,6 +305,13 @@ Esta tasa es asintótica y útil para comparar escenarios normales, ruidosos y b
 * Si `photon_number >= 2`, Eve conserva un fotón y reenvía el mismo estado BB84 a Bob. No introduce QBER por sí misma, pero aprende el bit cuando la base se anuncia públicamente.
 * Si `photon_number == 1`, Eve puede bloquear el pulso con `pns_block_single_photon_probability` para imitar pérdida de canal.
 
+La configuración `EveConfig.attack_position` determina cuándo observa el
+pulso: `post_loss` (predeterminado) solo le entrega fotones que sobrevivieron
+al canal, mientras que `pre_loss` la coloca después de `PreparedState` y antes
+de muestrear la pérdida, permitiendo dividir el número de fotones emitido.
+Es una posición discreta del modelo pedagógico, no una implementación
+componible de dos segmentos Alice--Eve--Bob.
+
 Las trazas se guardan como `eve_action="pns_split"` o `eve_action="pns_block_single"`, junto con tags como `eve_forwarded_photons`, `eve_photons_kept` y `eve_blocked_signal`.
 
 ### B.4 Protocolo E91 y Diagnóstico CHSH (Fase 7)
@@ -328,6 +354,18 @@ $$p_{\text{background}} = 1 - e^{-R_{\text{background}} \times t_{\text{gate}}}$
 
 Cuando hay crosstalk Raman, el detector usa la tasa efectiva:
 $$p_{\text{background,eff}} = 1 - e^{-(R_{\text{background}} + R_{\text{Raman}}) \times t_{\text{gate}}}$$
+
+`DetectorConfig(kind="ideal")` es un alias pedagógico del mismo detector de
+umbral efectivo que `kind="threshold"`; no elimina los parámetros de ruido
+configurados. Solo es físicamente ideal con eficiencia `1.0`, tasas de fondo y
+dark count cero, `dead_time_s=0`, post-pulsos desactivados y error de lectura
+cero. El snapshot `provenance.effective_model` conserva la clase efectiva.
+
+Para la memoria de post-pulso, si existe una activación previa en `t_prev`:
+$$p_{\text{ap}}(\Delta t) = p_0 e^{-\Delta t/\tau},\qquad
+\Delta t=\max(0,t-t_{\text{prev}})$$
+cuando `afterpulse_tau_s=τ`; `afterpulse_tau_s=None` mantiene la probabilidad
+legacy constante `p0` por compuerta.
 
 ### D. Eficiencia del Detector sobre Pulsos Multi-fotón
 Para un pulso con $K_{\text{survives}}$ fotones incidentes, la probabilidad de click de señal en un detector de umbral (SPAD) con eficiencia $\eta_{\text{detector}}$ es:

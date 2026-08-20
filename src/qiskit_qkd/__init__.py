@@ -3,13 +3,25 @@
 from typing import TYPE_CHECKING
 
 from .analysis import (
+    DEFAULT_CONFIDENCE_LEVEL,
+    ConfidenceInterval,
     add_derived_metrics,
+    authoritative_metrics_from_result,
+    authoritative_result_metrics,
     bell_rows_from_result,
     decoy_rows_from_result,
+    extract_authoritative_metrics,
+    mean_confidence_interval,
     metric_rows_from_results,
+    observed_metric_rows_from_results,
+    proportion_confidence_interval,
     secure_distance_limit,
     summarize_metric_rows,
+    t_confidence_interval,
+    t_interval,
+    wilson_interval,
 )
+from .channel_core import PreparedState
 from .config import (
     ChannelConfig,
     DecoyIntensity,
@@ -67,7 +79,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AerNoiseModelAdapter",
+    "ConfidenceInterval",
+    "DEFAULT_CONFIDENCE_LEVEL",
     "add_derived_metrics",
+    "authoritative_metrics_from_result",
+    "authoritative_result_metrics",
     "BB84Protocol",
     "bell_rows_from_result",
     "ChannelConfig",
@@ -98,6 +114,7 @@ __all__ = [
     "ParameterSchedule",
     "PhotonNumberSplittingEve",
     "PostProcessingConfig",
+    "PreparedState",
     "ProtocolConfig",
     "QiskitSamplerBackend",
     "ResultAssessment",
@@ -111,11 +128,18 @@ __all__ = [
     "WeakCoherentDecoySource",
     "__version__",
     "decoy_rows_from_result",
+    "extract_authoritative_metrics",
     "make_rng",
     "metric_rows_from_results",
-    "source_from_config",
+    "mean_confidence_interval",
+    "observed_metric_rows_from_results",
+    "proportion_confidence_interval",
     "secure_distance_limit",
     "summarize_metric_rows",
+    "source_from_config",
+    "t_confidence_interval",
+    "t_interval",
+    "wilson_interval",
 ]
 
 

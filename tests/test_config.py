@@ -123,6 +123,42 @@ def test_e91_config_accepts_equivalent_chsh_sign_and_term_order() -> None:
     assert E91Config.from_dict(config.to_dict()) == config
 
 
+def test_new_detector_and_e91_fields_round_trip_without_changing_defaults() -> None:
+    baseline = E91Config().to_dict()
+    assert "alice_detector" not in baseline
+    assert "bob_detector" not in baseline
+    assert "pair_emission_model" not in baseline
+    assert "pair_mean" not in baseline
+    assert DetectorConfig().to_dict() == {
+        "kind": "ideal",
+        "efficiency": 1.0,
+        "dark_count_rate_hz": 0.0,
+        "gate_width_s": 1e-9,
+        "dead_time_s": 0.0,
+        "afterpulse_probability": 0.0,
+        "readout_error_probability": 0.0,
+        "double_click_policy": "discard",
+    }
+
+    config = E91Config(
+        alice_detector=DetectorConfig(kind="threshold", efficiency=0.8),
+        bob_detector=DetectorConfig(kind="threshold", dark_count_rate_hz=2.0),
+        pair_emission_model="poisson",
+        pair_mean=0.25,
+    )
+    restored = E91Config.from_dict(config.to_dict())
+    assert restored == config
+    global_detector = DetectorConfig(kind="ideal")
+    assert config.detector_for_alice(global_detector) == config.alice_detector
+    assert config.detector_for_bob(global_detector) == config.bob_detector
+    assert E91Config().detector_for_alice(global_detector) == global_detector
+
+
+def test_afterpulse_tau_must_be_positive_or_none() -> None:
+    with pytest.raises(ValueError, match="afterpulse_tau_s must be positive"):
+        DetectorConfig(afterpulse_tau_s=0.0)
+
+
 @pytest.mark.parametrize(
     ("terms", "exception", "match"),
     [

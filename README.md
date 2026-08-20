@@ -60,10 +60,14 @@ the wrong threshold.
 
 For reproducibility, retain the requested scenario, its digest and seed, the
 effective model snapshot, and the backend/Qiskit/Aer version and seed metadata.
-Requested parameters describe user intent; `provenance.effective_model`
-describes what the selected source, channel, detector, and protocol actually
-used. Repeating a seed is meaningful only with the same effective model,
-software versions, backend path, and primitive configuration.
+Runtime provenance also records the Python version, VCS commit (with a
+confidence/source marker), dirty state, and an implementation SHA-256 when
+available. Requested parameters describe user intent;
+`provenance.effective_model` describes what the selected source, channel,
+detector, and protocol actually used. Repeating a seed is meaningful only with
+the same effective model, software versions, backend path, and primitive
+configuration. A missing commit is reported as `unknown`, never inferred from
+the reader runtime.
 
 Sweep rows keep `requested_scenario_digest` and
 `effective_scenario_digest` separately so a base request is not confused with
@@ -76,9 +80,22 @@ the derived assessment/provenance in `provenance.archive_load`; explicit
 readers. Loading an archive never substitutes the current runtime version or a
 newly inferred effective model as historical producer evidence.
 
-The current payload does not hash the implementation checkout and does not
-record the Python runtime version; archive the VCS revision and environment
-lock separately when exact long-term reproduction matters.
+For a filesystem-level thesis record, use `qiskit_qkd.experiments.write_artifact`: it
+persists a manifest JSON and companion CSV atomically as one unit. The manifest
+records UTC generation time, commit plus `commit_confidence`, Python/Qiskit/Aer
+versions, all discovered seeds, serialized scenarios and digests, CSV/script
+SHA-256 hashes, generator path and command, and a one-to-one result-ID index.
+The artifact (JSON + CSV), not an in-memory `SimulationResult`, is the
+versioned persistence unit; keep it together with the source script and lock
+file.
+
+Use `extract_authoritative_metrics(result)` for a public result row. It
+returns nullable QBER (`qber_defined`/`qber_value`), the threshold decision and
+its evidence origin, rate applicability/status, and verification state. For
+Alice/Bob-facing exports use `observed_metric_rows_from_results(...)`; Eve
+actions and other simulator-only diagnostics belong to the explicit internal
+view and are not available to Alice or Bob. The panel shows diagnostics only
+when the user opts into that view.
 
 ## Installation
 

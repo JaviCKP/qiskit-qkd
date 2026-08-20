@@ -53,6 +53,30 @@ _DEFENSIVE_JSON_FIELDS = {
 _ARCHIVED_PROVENANCE_TOKEN = object()
 
 
+def _strip_adversary_fields(value: Any) -> Any:
+    """Copy JSON-like data while omitting simulator-side Eve metadata.
+
+    ``to_dict`` remains the compatibility/archive representation.  Public
+    observed views use this filter so adversary configuration and traces do
+    not become apparent protocol inputs merely because a result was exported.
+    ``event_sample`` is intentionally retained; only keys explicitly naming
+    Eve (or the eavesdropper configuration) are removed.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            key: _strip_adversary_fields(item)
+            for key, item in value.items()
+            if not (
+                isinstance(key, str)
+                and (key.startswith("eve_") or key == "eavesdropper")
+            )
+        }
+    if isinstance(value, list):
+        return [_strip_adversary_fields(item) for item in value]
+    return value
+
+
 def default_provenance(
     scenario: Scenario,
     *,
@@ -497,6 +521,83 @@ class SimulationResult:
         """Export a schema-v1 JSON envelope for legacy readers."""
 
         return self.to_json(schema_version=LEGACY_RESULT_SCHEMA_VERSION)
+
+    def to_observed_dict(
+        self,
+        *,
+        schema_version: int = RESULT_SCHEMA_VERSION,
+    ) -> JSONObject:
+        """Serialize only observations available to Alice and Bob.
+
+        This is an additive, explicit view.  The default :meth:`to_dict`
+        remains unchanged for legacy archives and simulator-side analysis;
+        callers that publish or hand a result to protocol participants should
+        use this method so Eve fields/configuration are omitted.
+        """
+
+        payload = self.to_dict(schema_version=schema_version)
+        return _strip_adversary_fields(payload)
+
+    def to_observed_json(
+        self,
+        *,
+        schema_version: int = RESULT_SCHEMA_VERSION,
+    ) -> str:
+        """Serialize the Alice/Bob observed view as JSON."""
+
+        return dumps_pretty(self.to_observed_dict(schema_version=schema_version))
+
+    # Short aliases make the separation discoverable without changing the
+    # legacy schema API.
+    observed_dict = to_observed_dict
+    observed_json = to_observed_json
+
+    @property
+    def observed(self) -> JSONObject:
+        """Return a defensive Alice/Bob-only result mapping."""
+
+        return self.to_observed_dict()
+
+    def to_internal_diagnostics_dict(self) -> JSONObject:
+        """Serialize simulator diagnostics, including Eve traces/configuration."""
+
+        event_sample = [
+            normalize_json_object(event.to_dict(), path="event_sample")
+            for event in self.event_sample
+        ]
+        return {
+            "scenario": normalize_json_object(self.scenario.to_dict(), path="scenario"),
+            "metrics": normalize_json_object(self.metrics.to_dict(), path="metrics"),
+            # Flat aliases make simulator reports convenient while the nested
+            # metrics object preserves the legacy shape.
+            "eve_intercepted_fraction": self.metrics.eve_intercepted_fraction,
+            "eve_information_estimate": self.metrics.eve_information_estimate,
+            "provenance": normalize_json_object(self.provenance, path="provenance"),
+            "qiskit": normalize_json_object(self.qiskit, path="qiskit"),
+            "classical": normalize_json_object(self.classical, path="classical"),
+            "decoy": normalize_json_object(self.decoy, path="decoy"),
+            "bell": normalize_json_object(self.bell, path="bell"),
+            "event_sample": event_sample,
+            "events": event_sample,
+            "assessment": self.assessment.to_dict(),
+        }
+
+    @property
+    def internal_diagnostics(self) -> JSONObject:
+        """Return simulator-side diagnostics, including Eve information."""
+
+        return self.to_internal_diagnostics_dict()
+
+    def authoritative_metrics(self) -> JSONObject:
+        """Return the public evidence-backed metric interpretation.
+
+        The implementation is imported lazily to keep the results package
+        independent from the analysis package at import time.
+        """
+
+        from qiskit_qkd.analysis.metrics import extract_authoritative_metrics
+
+        return extract_authoritative_metrics(self)
 
     @classmethod
     def from_json(cls, payload: str) -> Self:

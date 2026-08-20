@@ -28,6 +28,7 @@ from qiskit_qkd.postprocessing import (
 from qiskit_qkd.reproducibility import make_rng
 from qiskit_qkd.results import Event, Metrics, SimulationResult
 from qiskit_qkd.sources import source_from_config
+from qiskit_qkd.sources.single_photon import _sample_poisson
 from qiskit_qkd.timing import (
     TimingContext,
     assign_timing,
@@ -62,6 +63,8 @@ class PreparedE91Round:
     bob_angle_rad: float
     emitted: bool
     bob_transmitted: bool
+    pair_count: int
+    bob_surviving_photon_number: int
 
 
 class E91Protocol:
@@ -91,9 +94,7 @@ class E91Protocol:
                 "resolve the scenario first with temporal.scenario_at",
             )
 
-        backend = backend or backend_from_scenario(scenario)
-        if hasattr(backend, "configure_from_scenario"):
-            backend.configure_from_scenario(scenario)
+        backend = backend_from_scenario(scenario, backend=backend)
 
         # Aggregated runs use the bounded-memory streaming path.  The legacy
         # full-event-log path below intentionally keeps its historical
@@ -109,8 +110,12 @@ class E91Protocol:
         rng = make_rng(scenario.seed)
         source = source_from_config(scenario.source)
         channel = channel_from_config(scenario.channel)
-        alice_detector = detector_from_config(scenario.detector)
-        bob_detector = detector_from_config(scenario.detector)
+        alice_detector = detector_from_config(
+            scenario.e91.detector_for_alice(scenario.detector),
+        )
+        bob_detector = detector_from_config(
+            scenario.e91.detector_for_bob(scenario.detector),
+        )
 
         prepared = []
         for index in range(scenario.pulses):
@@ -155,12 +160,25 @@ class E91Protocol:
         provenance["protocol"] = "E91"
         provenance["source_model"] = type(source).__name__
         provenance["channel_model"] = type(channel).__name__
-        provenance["detector_model"] = type(bob_detector).__name__
+        provenance.update(
+            _e91_detector_provenance(
+                scenario,
+                alice_detector=alice_detector,
+                bob_detector=bob_detector,
+            ),
+        )
         qiskit_summary = (
             backend.qiskit_summary()
             if hasattr(backend, "qiskit_summary")
             else {}
         )
+        effective_diagnostics = _e91_effective_diagnostics(
+            scenario,
+            events,
+            alice_detector=alice_detector,
+            bob_detector=bob_detector,
+        )
+        qiskit_summary["e91_effective_diagnostics"] = effective_diagnostics
         observed_qber = qber(metrics.errors, metrics.sifted)
         threshold = scenario.post_processing.qber_abort_threshold
         threshold_exceeded = (
@@ -203,6 +221,7 @@ class E91Protocol:
             "bell_violation_legacy_none_maps_to": bell[
                 "bell_violation_legacy_none_maps_to"
             ],
+            "e91_effective_diagnostics": effective_diagnostics,
         }
 
         event_sample = (
@@ -274,8 +293,12 @@ class E91Protocol:
         round_rng = make_rng(scenario.seed)
         source = source_from_config(scenario.source)
         channel = channel_from_config(scenario.channel)
-        alice_detector = detector_from_config(scenario.detector)
-        bob_detector = detector_from_config(scenario.detector)
+        alice_detector = detector_from_config(
+            scenario.e91.detector_for_alice(scenario.detector),
+        )
+        bob_detector = detector_from_config(
+            scenario.e91.detector_for_bob(scenario.detector),
+        )
 
         setting_counters = _new_setting_counters(scenario)
         sample_rng = make_rng(scenario.seed + 0xE7E17)
@@ -289,6 +312,9 @@ class E91Protocol:
         timing_discards = 0
         dead_time_discards = 0
         afterpulse_clicks = 0
+        pair_count_total = 0
+        multipair_slots = 0
+        bob_photon_total = 0
 
         for start in range(0, scenario.pulses, block_limit):
             _check_cancellation(cancellation_check)
@@ -334,6 +360,12 @@ class E91Protocol:
                     event.tags.get("alice_afterpulse") is True
                     or event.tags.get("bob_afterpulse") is True
                 )
+                pair_count = int(event.tags.get("pair_count", 0))
+                pair_count_total += pair_count
+                multipair_slots += int(pair_count > 1)
+                bob_photon_total += int(
+                    event.tags.get("bob_surviving_photon_number", 0),
+                )
                 _update_setting_counter(setting_counters, event)
 
                 if scenario.event_sample_size > 0:
@@ -366,11 +398,17 @@ class E91Protocol:
             backend=backend,
             source=source,
             channel=channel,
+            alice_detector=alice_detector,
             detector=bob_detector,
             metrics=metrics,
             setting_rows=setting_rows,
             event_sample=tuple(sorted(event_sample, key=lambda event: event.index)),
             aggregated=True,
+            effective_diagnostics={
+                "pair_count_total": pair_count_total,
+                "multipair_slots": multipair_slots,
+                "bob_surviving_photon_total": bob_photon_total,
+            },
         )
 
     @staticmethod
@@ -438,23 +476,43 @@ class E91Protocol:
         backend: Any,
         source: Any,
         channel: Any,
+        alice_detector: Any,
         detector: Any,
         metrics: Metrics,
         setting_rows: list[JSONObject],
         event_sample: tuple[Event, ...],
         aggregated: bool,
+        effective_diagnostics: dict[str, Any] | None = None,
     ) -> SimulationResult:
         bell = E91Protocol._bell_summary(scenario, setting_rows, metrics.chsh_s)
         provenance = backend.provenance()
         provenance["protocol"] = "E91"
         provenance["source_model"] = type(source).__name__
         provenance["channel_model"] = type(channel).__name__
-        provenance["detector_model"] = type(detector).__name__
+        provenance.update(
+            _e91_detector_provenance(
+                scenario,
+                alice_detector=alice_detector,
+                bob_detector=detector,
+            ),
+        )
         qiskit_summary = (
             backend.qiskit_summary()
             if hasattr(backend, "qiskit_summary")
             else {}
         )
+        effective_diagnostics = {
+            **_e91_effective_diagnostics_from_counts(
+                scenario,
+                metrics,
+                alice_detector=alice_detector,
+                bob_detector=detector,
+            ),
+            **(effective_diagnostics or {}),
+            "backend_measurement_model": "single_bell_pair_representative",
+            "backend_simulates_multipair": False,
+        }
+        qiskit_summary["e91_effective_diagnostics"] = effective_diagnostics
         observed_qber = qber(metrics.errors, metrics.sifted)
         threshold = scenario.post_processing.qber_abort_threshold
         threshold_exceeded = (
@@ -497,6 +555,7 @@ class E91Protocol:
             "bell_violation_legacy_none_maps_to": bell[
                 "bell_violation_legacy_none_maps_to"
             ],
+            "e91_effective_diagnostics": effective_diagnostics,
         }
         return SimulationResult(
             scenario=scenario,
@@ -525,11 +584,18 @@ class E91Protocol:
             else 1.0 / scenario.clock_rate_hz
         )
         emission_time_s = index * slot_period_s
-        emission = source.emit(rng=rng, time_s=emission_time_s)
-        bob_transmitted = (
-            emission.emitted
-            and _sample_single_photon_survival(channel=channel, rng=rng)
+        pair_count, emitted = _sample_e91_pair_count(
+            scenario=scenario,
+            source=source,
+            rng=rng,
+            time_s=emission_time_s,
         )
+        bob_surviving_photon_number = _sample_surviving_photon_number(
+            channel=channel,
+            photon_number=pair_count,
+            rng=rng,
+        )
+        bob_transmitted = bob_surviving_photon_number > 0
         effective_timing = (
             timing_context.timing
             if timing_context is not None
@@ -542,7 +608,9 @@ class E91Protocol:
             time_slot=index,
             pulses=scenario.pulses,
             clock_rate_hz=scenario.clock_rate_hz,
-            gate_width_s=scenario.detector.gate_width_s,
+            gate_width_s=(
+                scenario.e91.detector_for_bob(scenario.detector).gate_width_s
+            ),
             timing=effective_timing,
             transmitted=bob_transmitted,
             rng=rng,
@@ -565,8 +633,10 @@ class E91Protocol:
             bob_setting=bob_setting,
             alice_angle_rad=scenario.e91.alice_angles_rad[alice_setting],
             bob_angle_rad=scenario.e91.bob_angles_rad[bob_setting],
-            emitted=emission.emitted,
+            emitted=emitted,
             bob_transmitted=bob_transmitted,
+            pair_count=pair_count,
+            bob_surviving_photon_number=bob_surviving_photon_number,
         )
 
     @staticmethod
@@ -640,17 +710,24 @@ class E91Protocol:
             bob_measured_bit = None if measured_pair is None else measured_pair[1]
 
             alice_detection = alice_detector.detect(
-                signal_present=round_.emitted,
-                signal_photon_number=1 if round_.emitted else 0,
-                measured_bit=alice_measured_bit if round_.emitted else None,
+                signal_present=round_.pair_count > 0,
+                signal_photon_number=round_.pair_count,
+                measured_bit=alice_measured_bit if round_.pair_count > 0 else None,
                 rng=rng,
                 time_s=round_.emission_time_s,
                 background_count_rate_hz=alice_background_rate_hz,
             )
-            bob_signal_present = _e91_bob_signal_in_coincidence_window(round_)
+            bob_signal_present = (
+                _e91_bob_signal_in_coincidence_window(round_)
+                and round_.bob_surviving_photon_number > 0
+            )
             bob_detection = bob_detector.detect(
                 signal_present=bob_signal_present,
-                signal_photon_number=1 if bob_signal_present else 0,
+                signal_photon_number=(
+                    round_.bob_surviving_photon_number
+                    if bob_signal_present
+                    else 0
+                ),
                 measured_bit=bob_measured_bit if bob_signal_present else None,
                 rng=rng,
                 time_s=(
@@ -698,9 +775,9 @@ class E91Protocol:
                     alice_basis=f"A{round_.alice_setting}",
                     bob_basis=f"B{round_.bob_setting}",
                     emitted=round_.emitted,
-                    photon_number=2 if round_.emitted else 0,
+                    photon_number=2 * round_.pair_count,
                     surviving_photon_number=(
-                        int(round_.emitted) + int(round_.bob_transmitted)
+                        round_.pair_count + round_.bob_surviving_photon_number
                     ),
                     intensity_class="entangled_pair" if round_.emitted else None,
                     transmitted=round_.bob_transmitted,
@@ -858,6 +935,181 @@ def _sample_single_photon_survival(*, channel: Any, rng: random.Random) -> bool:
     return bool(channel.transmit(rng))
 
 
+def _sample_surviving_photon_number(
+    *,
+    channel: Any,
+    photon_number: int,
+    rng: random.Random,
+) -> int:
+    """Sample independent Bob-arm survival for each physical photon.
+
+    The one-photon branch intentionally delegates to the historical helper so
+    Bernoulli E91 consumes exactly the same random stream as prior releases.
+    """
+
+    if photon_number <= 0:
+        return 0
+    if photon_number == 1:
+        return int(_sample_single_photon_survival(channel=channel, rng=rng))
+    return sum(
+        int(_sample_single_photon_survival(channel=channel, rng=rng))
+        for _ in range(photon_number)
+    )
+
+
+def _sample_e91_pair_count(
+    *,
+    scenario: Scenario,
+    source: Any,
+    rng: random.Random,
+    time_s: float,
+) -> tuple[int, bool]:
+    """Return emitted pair count while preserving the legacy Bernoulli path."""
+
+    if scenario.e91.pair_emission_model == "bernoulli":
+        emission = source.emit(rng=rng, time_s=time_s)
+        # EntangledPairSource emits exactly two photons for one pair.  Keep a
+        # conservative fallback for custom source implementations.
+        pair_count = int(emission.photon_number // 2) if emission.emitted else 0
+        if emission.emitted and pair_count == 0:
+            pair_count = 1
+        return pair_count, emission.emitted
+
+    mean = scenario.e91.pair_mean
+    if mean is None:
+        mean = getattr(source, "emission_probability", 1.0)
+    pair_count = _sample_poisson(rng, mean)
+    return pair_count, pair_count > 0
+
+
+def _e91_effective_diagnostics(
+    scenario: Scenario,
+    events: Sequence[Event],
+    *,
+    alice_detector: Any,
+    bob_detector: Any,
+) -> JSONObject:
+    pair_count_total = sum(int(event.tags.get("pair_count", 0)) for event in events)
+    multipair_slots = sum(
+        int(int(event.tags.get("pair_count", 0)) > 1) for event in events
+    )
+    bob_photon_total = sum(
+        int(event.tags.get("bob_surviving_photon_number", 0)) for event in events
+    )
+    return {
+        "pair_emission_model": scenario.e91.pair_emission_model,
+        "pair_mean": _e91_effective_pair_mean(scenario),
+        "pair_count_total": pair_count_total,
+        "multipair_slots": multipair_slots,
+        "bob_surviving_photon_total": bob_photon_total,
+        **_e91_detector_diagnostics(
+            scenario,
+            alice_detector=alice_detector,
+            bob_detector=bob_detector,
+        ),
+        **_e91_multipair_model_diagnostics(scenario),
+    }
+
+
+def _e91_effective_diagnostics_from_counts(
+    scenario: Scenario,
+    metrics: Metrics,
+    *,
+    alice_detector: Any,
+    bob_detector: Any,
+) -> JSONObject:
+    return {
+        "pair_emission_model": scenario.e91.pair_emission_model,
+        "pair_mean": _e91_effective_pair_mean(scenario),
+        "pair_count_total": int(metrics.emitted),
+        "multipair_slots": 0,
+        "bob_surviving_photon_total": int(metrics.transmitted),
+        **_e91_detector_diagnostics(
+            scenario,
+            alice_detector=alice_detector,
+            bob_detector=bob_detector,
+        ),
+        **_e91_multipair_model_diagnostics(scenario),
+    }
+
+
+def _e91_effective_pair_mean(scenario: Scenario) -> float | None:
+    """Return the resolved mean used by the optional Poisson pair model."""
+
+    if scenario.e91.pair_emission_model != "poisson":
+        return None
+    if scenario.e91.pair_mean is not None:
+        return float(scenario.e91.pair_mean)
+    return float(getattr(scenario.source, "emission_probability", 1.0))
+
+
+def _e91_multipair_model_diagnostics(scenario: Scenario) -> JSONObject:
+    if scenario.e91.pair_emission_model != "poisson":
+        model = "single_pair_bernoulli"
+        note = "Each emitted round contains one representative Bell pair."
+    else:
+        model = "event_layer_poisson_bell_representative"
+        note = (
+            "Poisson pair counts affect event-layer photon survival and detector "
+            "statistics; the backend samples one representative Bell pair per "
+            "emitted round rather than an n-pair quantum state."
+        )
+    return {
+        "backend_measurement_model": "single_bell_pair_representative",
+        "backend_simulates_multipair": False,
+        "multipair_model": model,
+        "multipair_model_note": note,
+    }
+
+
+def _e91_detector_diagnostics(
+    scenario: Scenario,
+    *,
+    alice_detector: Any,
+    bob_detector: Any,
+) -> JSONObject:
+    alice_config = scenario.e91.detector_for_alice(scenario.detector)
+    bob_config = scenario.e91.detector_for_bob(scenario.detector)
+    return {
+        "alice_detector_model": type(alice_detector).__name__,
+        "bob_detector_model": type(bob_detector).__name__,
+        "alice_readout_error_probability": float(
+            alice_config.readout_error_probability,
+        ),
+        "bob_readout_error_probability": float(
+            bob_config.readout_error_probability,
+        ),
+        "detector_readout_error_probabilities": {
+            "alice": float(alice_config.readout_error_probability),
+            "bob": float(bob_config.readout_error_probability),
+        },
+    }
+
+
+def _e91_detector_provenance(
+    scenario: Scenario,
+    *,
+    alice_detector: Any,
+    bob_detector: Any,
+) -> JSONObject:
+    diagnostics = _e91_detector_diagnostics(
+        scenario,
+        alice_detector=alice_detector,
+        bob_detector=bob_detector,
+    )
+    return {
+        "detector_model": diagnostics["bob_detector_model"],
+        "alice_detector_model": diagnostics["alice_detector_model"],
+        "bob_detector_model": diagnostics["bob_detector_model"],
+        "alice_readout_error_probability": diagnostics[
+            "alice_readout_error_probability"
+        ],
+        "bob_readout_error_probability": diagnostics[
+            "bob_readout_error_probability"
+        ],
+    }
+
+
 def _sample_event_records(
     events: Sequence[Event],
     *,
@@ -919,6 +1171,11 @@ def _event_tags(
         "coincidence": coincidence,
         "used_for_key": used_for_key,
         "used_for_chsh": used_for_chsh,
+        "pair_count": round_.pair_count,
+        "multipair": round_.pair_count > 1,
+        "bob_surviving_photon_number": round_.bob_surviving_photon_number,
+        "backend_measurement_model": "single_bell_pair_representative",
+        "backend_simulates_multipair": False,
     }
 
 

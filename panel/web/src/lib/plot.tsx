@@ -1,5 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 
+import { seriesStyle } from '@/lib/palette'
+
 export type CurvePlotTrace = {
   x?: unknown[]
   y?: unknown[]
@@ -44,12 +46,15 @@ export const CurvePlot = memo(function CurvePlot({ traces, title, xLabel, yLabel
       <div className="sr-only" aria-live="polite">{title}. Eje X: {xLabel}. Eje Y: {yLabel}.</div>
       <svg aria-label={title} className="h-full w-full" role="img" viewBox="0 0 960 414" xmlns="http://www.w3.org/2000/svg">
         <title>{title}</title>
-        <desc>Grafica de dispersion con leyenda interactiva. {xLabel} frente a {yLabel}.</desc>
-        <rect fill="#0b1220" height="414" rx="8" width="960" />
-        <g aria-hidden="true" className="text-slate-500" fill="none" stroke="#334155" strokeWidth="1">
+        <desc>Gráfica de dispersión con leyenda interactiva. {xLabel} frente a {yLabel}.</desc>
+        <rect fill="#0b1119" height="414" rx="10" width="960" />
+        {/* Recessive grid: horizontal rules only, so the marks stay dominant. */}
+        <g aria-hidden="true" fill="none" stroke="#243141" strokeWidth="1">
+          {model.yTicks.map((tick) => <line key={`y-grid-${tick.value}`} x1={model.left} x2={model.right} y1={tick.position} y2={tick.position} />)}
+        </g>
+        <g aria-hidden="true" fill="none" stroke="#3a4a5a" strokeWidth="1">
           <line x1={model.left} x2={model.left} y1={model.top} y2={model.bottom} />
           <line x1={model.left} x2={model.right} y1={model.bottom} y2={model.bottom} />
-          {model.yTicks.map((tick) => <line key={`y-grid-${tick.value}`} opacity="0.35" x1={model.left} x2={model.right} y1={tick.position} y2={tick.position} />)}
         </g>
         <g fill="#94a3b8" fontSize="12" textAnchor="end">
           {model.yTicks.map((tick) => <text key={`y-label-${tick.value}`} x={model.left - 8} y={tick.position + 4}>{formatTick(tick.value)}</text>)}
@@ -62,11 +67,34 @@ export const CurvePlot = memo(function CurvePlot({ traces, title, xLabel, yLabel
         {threshold !== null && model.yScale(threshold) !== null ? <g><line stroke="#e3ae49" strokeDasharray="4 4" strokeWidth="1.5" x1={model.left} x2={model.right} y1={model.yScale(threshold) ?? 0} y2={model.yScale(threshold) ?? 0} /><text fill="#e3ae49" fontSize="12" x={model.right - 4} y={(model.yScale(threshold) ?? 0) - 5} textAnchor="end">{thresholdLabel}</text></g> : null}
         {model.series.map((series) => {
           if (series.visibilityName && hidden.has(series.visibilityName)) return null
-          return <g key={series.key}>{series.fillPaths.map((path, index) => <path d={path} fill={series.fill ?? 'none'} key={`${series.key}-fill-${index}`} stroke="none" />)}{series.paths.map((path, index) => <path d={path} fill="none" key={`${series.key}-line-${index}`} stroke={series.stroke} strokeDasharray={series.dash} strokeWidth={series.width} />)}{series.showMarkers ? series.points.map((point, index) => <circle aria-label={`${series.name ?? 'serie'} ${formatTick(point.rawX)}, ${formatTick(point.rawY)}`} fill={series.markerColor} key={`${series.key}-${index}`} r={series.radius} tabIndex={0} cx={point.x} cy={point.y}><title>{`${series.name ?? 'serie'}: ${formatTick(point.rawX)}, ${formatTick(point.rawY)}`}</title></circle>) : null}</g>
+          return <g key={series.key}>{series.fillPaths.map((path, index) => <path d={path} fill={series.fill ?? 'none'} key={`${series.key}-fill-${index}`} stroke="none" />)}{series.paths.map((path, index) => <path d={path} fill="none" key={`${series.key}-line-${index}`} stroke={series.stroke} strokeDasharray={series.dash} strokeWidth={series.width} />)}{series.showMarkers ? series.points.map((point, index) => <circle aria-label={`${series.name ?? 'serie'} ${formatTick(point.rawX)}, ${formatTick(point.rawY)}`} className="transition-[r] duration-150 hover:[r:6]" fill={series.markerColor} key={`${series.key}-${index}`} r={series.radius} stroke="#0b1119" strokeWidth="2" tabIndex={0} cx={point.x} cy={point.y}><title>{`${series.name ?? 'serie'}: ${formatTick(point.rawX)}, ${formatTick(point.rawY)}`}</title></circle>) : null}</g>
         })}
       </svg>
-      <div aria-label="Leyenda de la grafica" className="mt-1 flex flex-wrap gap-1" role="group">
-        {legend.map((entry) => <button aria-pressed={!hidden.has(entry.name)} className="rounded px-2 py-1 text-xs text-slate-300 hover:bg-white/10" key={entry.name} onClick={() => toggle(entry.name)} type="button"><span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />{entry.name}</button>)}
+      <div aria-label="Leyenda de la gráfica" className="mt-2 flex flex-wrap gap-1" role="group">
+        {legend.map((entry) => {
+          const visible = !hidden.has(entry.name)
+          return (
+            <button
+              aria-pressed={visible}
+              className={`flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-xs transition-colors ${
+                visible
+                  ? 'border-border bg-raised text-slate-200 hover:border-border-strong'
+                  : 'border-transparent text-slate-500 line-through hover:bg-white/5'
+              }`}
+              key={entry.name}
+              onClick={() => toggle(entry.name)}
+              title={visible ? `Ocultar ${entry.name}` : `Mostrar ${entry.name}`}
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: visible ? entry.color : 'transparent', boxShadow: `inset 0 0 0 2px ${entry.color}` }}
+              />
+              {entry.name}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -105,7 +133,6 @@ function buildModel(traces: CurvePlotTrace[], threshold: number | null): PlotMod
   const right = 936
   const top = 28
   const bottom = 366
-  const colors = ['#22d3ee', '#34d399', '#fbbf24', '#8b5cf6', '#f87171', '#e5e7eb']
   const source = traces.map((trace, index) => ({ trace, index, name: trace.name ?? `Serie ${index + 1}` }))
   const rawPoints = source.map(({ trace }) => toRawPoints(trace)).flat()
   const xNumbers = rawPoints.map((point) => point.x).filter(isFiniteNumber)
@@ -121,7 +148,7 @@ function buildModel(traces: CurvePlotTrace[], threshold: number | null): PlotMod
   const legend: Array<{ name: string; color: string }> = []
   let previousScaled: Array<Point | null> = []
   source.forEach(({ trace, index, name }) => {
-    const fallbackColor = colors[index % colors.length]
+    const fallbackColor = seriesStyle(index).color
     const stroke = trace.line?.color ?? trace.marker?.color ?? fallbackColor
     const markerColor = trace.marker?.color ?? (stroke === 'transparent' ? fallbackColor : stroke)
     const scaled = toRawPoints(trace).map((point, pointIndex): Point | null => {
@@ -138,7 +165,8 @@ function buildModel(traces: CurvePlotTrace[], threshold: number | null): PlotMod
       stroke,
       markerColor,
       width: trace.line?.width ?? 2,
-      radius: trace.marker?.size ? Math.max(2, Math.min(6, trace.marker.size / 2)) : 3,
+      // >=8px marks stay clickable and visible against the grid.
+      radius: trace.marker?.size ? Math.max(4, Math.min(7, trace.marker.size / 2)) : 4,
       dash: dashPattern(trace.line?.dash),
       fill: trace.fillcolor,
       paths: contiguousPaths(scaled),

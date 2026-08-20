@@ -355,7 +355,9 @@ This report also clarifies the limits of the current implementation:
   two-detector receiver with detector mismatch, basis-dependent efficiency, or
   detailed avalanche physics.
 - The Monte Carlo examples use `5_000` pulses for speed. Production validation
-  curves should use many more pulses and confidence intervals.
+  curves should use many more pulses and may use the current Wilson/Student-t
+  sweep intervals; those intervals describe Monte Carlo variation, not
+  finite-key security.
 
 ## Conclusion
 
@@ -365,5 +367,5 @@ teaching/research prototype: it gets the direction and scale right for loss,
 dark counts, timing windows, dead time, and afterpulsing.
 
 The next validation step should happen after Phase 3.6: compare the explicit
-post-processing pipeline against known BB84/decoy-state key-rate curves and add
-confidence intervals over multiple seeds.
+post-processing pipeline against known BB84/decoy-state key-rate curves and
+report multiple independent seeds with the current sweep interval helpers.

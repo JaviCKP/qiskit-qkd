@@ -186,8 +186,9 @@ Phase 4 includes:
 - Channel dephasing through `phase_damping_error` on the circuit channel
   marker.
 - Detector readout error through Aer `ReadoutError`.
-- Source preparation error as a sampled logical BB84 bit flip before basis
-  encoding.
+- Source preparation error sampled once into `PreparedState` before Eve/channel
+  processing; the physical bit is encoded while Alice's logical bit is kept for
+  sifting.
 - Coherent polarization misalignment as explicit Qiskit `ry`/`rz` gates.
 - Optical background as event-layer random detector clicks distinct from dark
   counts.
@@ -197,6 +198,8 @@ Phase 4 includes:
   `seed_transpiler` provenance.
 - `QiskitSamplerBackend` support for Aer `SamplerV2` when a noise model is
   supplied.
+- `backend_from_scenario(scenario)` as the canonical constructor that selects
+  the ideal/Aer path, configures seeds, and applies transpilation settings.
 - Qiskit/Aer version, seed, primitive, counts, noise-model, and transpilation
   summaries in `SimulationResult.qiskit`.
 - `examples/bb84_aer_noisy.py` and `examples/bb84_physical_noise.py`.
@@ -247,7 +250,9 @@ Phase 5 includes:
 - `EveConfig` on `Scenario`.
 - `qiskit_qkd.eavesdroppers` with `NoEve`, `InterceptResendEve`, and
   `eve_from_config()`.
-- Intercept-resend sampling only on surviving signal rounds.
+- Intercept-resend sampling at the configured discrete `attack_position`:
+  `post_loss` (default) after survival/timing, or `pre_loss` after
+  `PreparedState` and before channel survival.
 - Eve's basis choice, measured bit, resent state, and disturbance marker stored
   on event fields and JSON-safe tags.
 - `Metrics.eve_intercepted_fraction` and
@@ -299,8 +304,9 @@ Phase 6.1 includes:
   Raman count rate, and effective optical background rate.
 - `ChannelConfig` fields for PMD/CD/PDL/Raman parameters with validation and
   JSON round-tripping.
-- PDL applied before photon-survival sampling using Alice's prepared BB84 bit
-  and basis.
+- PDL applied before photon-survival sampling using the physical
+  `PreparedState.prepared_bit` and basis, which may differ from Alice's logical
+  bit after a preparation error.
 - PMD and chromatic dispersion applied as additional timing jitter, causing
   observable `early`/`late` timing discards.
 - Raman crosstalk added to the detector background rate, producing background
@@ -338,11 +344,15 @@ Phase 6.2 includes:
 - `PhotonNumberSplittingEve`, configured through
   `EveConfig(kind="photon_number_splitting")` or `kind="pns"`.
 - PNS splitting of multi-photon pulses without introducing BB84 basis errors.
+- `EveConfig.attack_position="post_loss"` (default) for the pedagogical
+  post-loss model, or `"pre_loss"` to let PNS act on emitted photon numbers
+  before channel loss. This is a discrete seam, not a composable two-segment
+  channel implementation.
 - Optional blocking of single-photon pulses to model a lossy-link PNS strategy.
 - Event tags for PNS actions, forwarded photons, blocked signals, and Eve's
   known sifted bits.
 
-Phase 6.2 does not include finite-key confidence intervals, composable
+Phase 6.2 does not include finite-key security confidence bounds, composable
 security, coherent/collective attacks, detector-control attacks, or
 photon-number-resolving detectors.
 
@@ -375,8 +385,9 @@ Phase 7 includes:
 
 Phase 7 deliberately does not include loophole-free Bell-test analysis,
 device-independent finite-key proofs, dual-arm asymmetric channel configs,
-SPDC multi-pair statistics, entanglement swapping, repeaters, or E91-specific
-side-channel attacks.
+full SPDC quantum multi-pair-state simulation (the current Poisson mode is an
+effective event-layer diagnostic), entanglement swapping, repeaters, or
+E91-specific side-channel attacks.
 
 The CHSH conclusion is a detected-coincidence, fair-sampling diagnostic. There
 is no significance test or confidence interval, and neither detection nor
@@ -421,12 +432,19 @@ Phase 9 includes:
 - Optional `plot` extra with `matplotlib>=3.8`.
 - `analysis.metric_rows_from_results()` for flattening `SimulationResult`
   objects into comparison rows.
+- `analysis.extract_authoritative_metrics()` as the single-result extractor
+  for nullable QBER, threshold decision, rate applicability/status, and
+  verification; `observed_metric_rows_from_results()` is the Alice/Bob-facing
+  view without Eve diagnostics, while the internal view remains opt-in in the
+  panel.
 - `analysis.add_derived_metrics()` for ratios such as detected fraction,
   sifted fraction, timing-discard fraction, QBER margin, CHSH margin, and
   privacy efficiency.
 - `analysis.summarize_metric_rows()` for repeated-seed aggregation with mean,
   standard deviation, min, max, p05, p95, per-metric finite counts, and
-  separate legacy-abort versus authoritative threshold-decision fractions.
+  separate legacy-abort versus authoritative threshold-decision fractions,
+  plus Wilson intervals for pooled proportions and Student-t intervals for
+  repeat means. `p05`/`p95` are descriptive percentiles, not confidence bounds.
 - `analysis.secure_distance_limit()` (legacy name) as a sampled-grid,
   assessment-gated pedagogical-rate distance diagnostic, not a certified
   range. A positive legacy rate and `abort=False` alone are insufficient.
@@ -437,9 +455,9 @@ Phase 9 includes:
 - `examples/bb84_visualization.py` and `docs/visualization.md`.
 
 Phase 9 does not include dashboards, interactive GUI state, notebook-only
-dependencies, CLI commands, automatic report generation, finite-key confidence
-intervals, or new security claims. Those can build on the same row and figure
-APIs later.
+dependencies, CLI commands, automatic report generation, finite-key security
+intervals, or new security claims. The implemented confidence intervals are
+descriptive Monte Carlo summaries only.
 
 ## Environment
 

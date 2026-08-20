@@ -4,12 +4,73 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 from qiskit_qkd.results import SimulationResult
+from qiskit_qkd.results.assessment import derive_result_assessment
+
+from .confidence import (
+    t_interval,
+    wilson_interval,
+)
 
 MetricRowValue: TypeAlias = str | int | float | bool | None
 MetricRow: TypeAlias = dict[str, MetricRowValue]
+
+
+def extract_authoritative_metrics(result: SimulationResult) -> MetricRow:
+    """Extract the public, evidence-backed interpretation of one result.
+
+    The legacy aggregate fields (notably ``metrics.qber`` and ``metrics.abort``)
+    are deliberately not used as the source of truth.  The assessment is
+    recomputed through :func:`derive_result_assessment`, so this extractor is
+    safe for archived v1 results and does not consume simulator-only Eve
+    diagnostics.
+
+    The returned row includes explicit aliases for the most commonly consumed
+    decisions: ``qber_defined``/``qber_value``, ``threshold_decision``,
+    ``rate_applicable``/``rate_status``, and ``verification_status``.  The full
+    assessment remains nested under ``assessment`` for callers that need the
+    evidence and reason codes.
+    """
+
+    if not isinstance(result, SimulationResult):
+        raise TypeError("result must be a SimulationResult")
+    assessment = derive_result_assessment(
+        result.scenario,
+        result.metrics,
+        classical=result.classical,
+        bell=result.bell,
+    )
+    data = assessment.to_dict()
+    qber_origin = {
+        "revealed_sample": "classical_estimate",
+        "full_sifted_key_diagnostic": "metrics_aggregate",
+        "unavailable": "unavailable",
+    }[assessment.qber_method]
+    data.update(
+        {
+            # Canonical names are retained alongside the ResultAssessment
+            # field names to make this extractor convenient for CSV/JSON users.
+            "qber": assessment.qber_value,
+            "qber_evidence_origin": qber_origin,
+            "qber_evidence_method": assessment.qber_method,
+            "qber_sample_size": assessment.sample_size,
+            "threshold_decision": assessment.threshold_exceeded,
+            "threshold_decision_origin": assessment.threshold_decision_source,
+            "rate_status": assessment.rate_estimate_status,
+            "rate_applicable": assessment.rate_estimate_status == "available",
+            "verification_state": assessment.verification_status,
+            "assessment": assessment.to_dict(),
+        },
+    )
+    return data
+
+
+# Explicit aliases keep the API discoverable for callers that phrase the
+# operation as a view or as a result-oriented conversion.
+authoritative_metrics_from_result = extract_authoritative_metrics
+authoritative_result_metrics = extract_authoritative_metrics
 
 
 def metric_rows_from_results(
@@ -58,6 +119,34 @@ def metric_rows_from_results(
         )
         rows.append(row)
     return add_derived_metrics(rows, qber_abort_threshold=qber_abort_threshold)
+
+
+def observed_metric_rows_from_results(
+    results: Mapping[str, SimulationResult] | Iterable[SimulationResult],
+    *,
+    label_key: str = "label",
+    qber_abort_threshold: float | None = None,
+) -> list[MetricRow]:
+    """Flatten results into rows containing observations only.
+
+    ``metric_rows_from_results`` remains the compatibility/diagnostic view.
+    This explicit variant removes Eve aggregate columns before derived metrics
+    are calculated, making it suitable for Alice/Bob-facing exports.
+    """
+
+    rows = metric_rows_from_results(
+        results,
+        label_key=label_key,
+        qber_abort_threshold=qber_abort_threshold,
+    )
+    return [
+        {
+            key: value
+            for key, value in row.items()
+            if not key.startswith("eve_")
+        }
+        for row in rows
+    ]
 
 
 def add_derived_metrics(
@@ -151,6 +240,7 @@ def summarize_metric_rows(
                 if value is not None
             ]
             output[f"{metric}_finite_count"] = len(values)
+            output[f"{metric}_ci"] = t_interval(values).to_dict()
             if not values:
                 continue
             mean = math.fsum(values) / len(values)
@@ -192,6 +282,9 @@ def summarize_metric_rows(
                 if threshold_decisions
                 else None
             )
+            output["threshold_decision_ci"] = _binary_ci(threshold_decisions)
+        _add_count_confidence_intervals(output, group_rows)
+        _add_binary_confidence_intervals(output, group_rows)
         if any("secure" in row for row in group_rows):
             legacy_true_fraction = sum(
                 int(row.get("secure") is True)
@@ -207,6 +300,68 @@ def summarize_metric_rows(
             ) / len(group_rows)
         summary.append(output)
     return summary
+
+
+def _add_count_confidence_intervals(
+    output: MetricRow,
+    rows: list[Mapping[str, MetricRowValue]],
+) -> None:
+    """Add Wilson CIs from aggregate counters, when those counters exist.
+
+    QBER is errors over sifted bits and gain is detections over pulse
+    opportunities.  These are intentionally computed from pooled counts rather
+    than by treating per-repeat proportions as independent Bernoulli trials.
+    """
+
+    errors = _sum_count(rows, "errors")
+    sifted = _sum_count(rows, "sifted")
+    if errors is not None and sifted is not None and errors <= sifted:
+        output["qber_ci"] = wilson_interval(errors, sifted).to_dict()
+
+    detected = _sum_count(rows, "detected")
+    opportunities = _sum_count(rows, "pulses")
+    if detected is not None and opportunities is not None and detected <= opportunities:
+        output["gain_ci"] = wilson_interval(detected, opportunities).to_dict()
+
+
+def _add_binary_confidence_intervals(
+    output: MetricRow,
+    rows: list[Mapping[str, MetricRowValue]],
+) -> None:
+    """Add Wilson CIs for non-null binary decisions present in the rows."""
+
+    for source_key, output_key in (
+        ("abort", "abort_ci"),
+        ("legacy_abort", "legacy_abort_ci"),
+        ("key_estimate_available", "key_estimate_available_ci"),
+    ):
+        if not any(source_key in row for row in rows):
+            continue
+        decisions = [row.get(source_key) for row in rows]
+        values = [value for value in decisions if isinstance(value, bool)]
+        output[output_key] = _binary_ci(values)
+
+
+def _binary_ci(values: list[bool]) -> dict[str, Any]:
+    return wilson_interval(sum(values), len(values)).to_dict()
+
+
+def _sum_count(
+    rows: list[Mapping[str, MetricRowValue]],
+    key: str,
+) -> int | None:
+    values: list[int] = []
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return None
+        numeric = float(value)
+        if not math.isfinite(numeric) or numeric < 0.0 or not numeric.is_integer():
+            return None
+        values.append(int(numeric))
+    return sum(values)
 
 
 def secure_distance_limit(

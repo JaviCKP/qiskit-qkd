@@ -116,3 +116,25 @@ The sdist limitation is explicit for exact tagged versions: if their public
 version has no `+g<hex>` local segment, an sdist-to-wheel rebuild has no commit
 identifier to recover and therefore reports `unknown` rather than inventing
 one.
+
+## Thesis experiment artifacts
+
+`qiskit_qkd.experiments.write_artifact(...)` is the persistence
+boundary for versioned experiment outputs. It writes `<name>.json` (manifest)
+and `<name>.csv` as an atomic pair; the pair is the reproducibility unit and
+should be stored together. The manifest includes:
+
+- UTC generation time, commit, dirty state, and `commit_confidence`/verification
+  status (unknown is explicit when VCS evidence is unavailable);
+- Python, Qiskit, and Qiskit Aer versions, plus every discovered seed path;
+- canonical serialized scenarios and their SHA-256 digests;
+- CSV row count and SHA-256, stable `result_id`/CSV-row coverage, and the
+  serialized observations;
+- generator script path and SHA-256, the exact command, and repository context.
+
+The writer hashes the generated CSV and script and performs the two-file write
+without leaving a manifest that points at a missing CSV. This artifact contract
+is intentionally separate from in-memory `SimulationResult` serialization:
+JSON result envelopes remain useful for interchange, while the manifest + CSV
+captures the thesis run, code, environment, seeds, and observations as one
+versioned record.

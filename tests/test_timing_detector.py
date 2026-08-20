@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import random
 from dataclasses import replace
+
+import pytest
 
 from qiskit_qkd import (
     ChannelConfig,
@@ -10,6 +13,7 @@ from qiskit_qkd import (
     SourceConfig,
     TimingConfig,
 )
+from qiskit_qkd.detectors import ThresholdDetector
 from qiskit_qkd.postprocessing import sift_bb84_event
 from qiskit_qkd.protocols import BB84Protocol
 
@@ -50,6 +54,43 @@ class ScriptedChannel:
         if not self.outcomes:
             raise AssertionError("ScriptedChannel exhausted")
         return self.outcomes.pop(0)
+
+
+def test_afterpulse_probability_decays_from_previous_detection_timestamp() -> None:
+    detector = ThresholdDetector(
+        efficiency=1.0,
+        dark_count_rate_hz=0.0,
+        gate_width_s=1e-9,
+        afterpulse_probability=0.8,
+        afterpulse_tau_s=2.0,
+    )
+    detector.detect(
+        signal_present=True,
+        measured_bit=1,
+        rng=random.Random(1),
+        time_s=0.0,
+    )
+
+    assert detector._afterpulse_probability(0.0) == 0.8
+    assert detector._afterpulse_probability(2.0) == pytest.approx(
+        0.8 / 2.718281828459045,
+    )
+
+
+def test_afterpulse_tau_none_preserves_constant_legacy_probability() -> None:
+    detector = ThresholdDetector(
+        efficiency=1.0,
+        dark_count_rate_hz=0.0,
+        gate_width_s=1e-9,
+        afterpulse_probability=0.4,
+    )
+    detector.detect(
+        signal_present=True,
+        measured_bit=0,
+        rng=random.Random(2),
+        time_s=0.0,
+    )
+    assert detector._afterpulse_probability(100.0) == 0.4
 
 
 def scenario(

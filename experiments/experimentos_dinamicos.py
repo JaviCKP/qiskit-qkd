@@ -8,8 +8,11 @@ de claves cuánticas.
 
 from __future__ import annotations
 
+import argparse
 import math
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 from qiskit_qkd import (
     BB84Protocol,
@@ -24,43 +27,111 @@ from qiskit_qkd import (
     ParameterResolver,
     ParameterSchedule,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
     SourceConfig,
     TimingConfig,
 )
+from qiskit_qkd.backends import backend_from_scenario
+from qiskit_qkd.experiments import write_artifact
 
 SEPARATOR = "=" * 76
 SUBSEP = "-" * 76
+_ARTIFACT_ROWS: list[dict] = []
+_ARTIFACT_SCENARIOS: list[Scenario] = []
+
+
+def _record_artifact_row(scenario: Scenario, payload: dict) -> None:
+    """Keep observed values for the optional reproducibility artifact."""
+
+    try:
+        row = {key: value for key, value in payload.items() if key != "raw_result"}
+        row["scenario"] = scenario.to_dict()
+        _ARTIFACT_ROWS.append(row)
+        _ARTIFACT_SCENARIOS.append(scenario)
+    except (AttributeError, TypeError):
+        # ``run`` remains useful with lightweight test doubles and callers that
+        # only need the returned summary; those calls simply have no artifact row.
+        return
+
+
+def _configure_console_output() -> None:
+    """Keep the Unicode scientific notation printable on Windows consoles."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+def _assessment_dict(result) -> dict:
+    assessment = result.assessment
+    if assessment is None:
+        return {}
+    if hasattr(assessment, "to_dict"):
+        return dict(assessment.to_dict())
+    return dict(assessment)
+
+
+def _format_optional(value, format_spec: str, undefined: str = "n/a") -> str:
+    return undefined if value is None else format(value, format_spec)
+
+
+def _threshold_label(value: bool | None) -> str:
+    if value is None:
+        return "n/a"
+    return "YES" if value else "no"
 
 
 def run(scenario: Scenario) -> dict:
-    backend = QiskitSamplerBackend(
-        seed=scenario.seed,
-        max_circuits_per_job=512,
-        max_recorded_results=0,
-    )
+    """Run one scenario through the canonical, scenario-aware backend.
+
+    ``Metrics`` remains useful for counters and compatibility fields, but the
+    assessment/classical/decoy/Bell summaries are the authoritative result
+    surfaces for diagnostics and plotted conclusions.
+    """
+
+    backend = backend_from_scenario(scenario)
     result = BB84Protocol().run(scenario, backend=backend)
     m = result.metrics
-    return {
+    assessment = _assessment_dict(result)
+    decoy_security = result.decoy.get("security", {})
+    qber_defined = bool(assessment.get("qber_defined", False))
+    qber_value = assessment.get("qber_value") if qber_defined else None
+    rate_status = assessment.get("rate_estimate_status", "unavailable")
+    rate_estimate = (
+        assessment.get("rate_estimate_bps")
+        if rate_status == "available"
+        else None
+    )
+    payload = {
         "pulses":           m.pulses,
         "emitted":          m.emitted,
         "transmitted":      m.transmitted,
         "detected":         m.detected,
         "sifted":           m.sifted,
         "errors":           m.errors,
-        "qber":             m.qber,
+        "qber":             qber_value,
+        "qber_defined":     qber_defined,
         "gain":             m.gain,
         "loss_db":          m.loss_db,
-        "secret_bps":       m.secret_key_rate_bps,
+        "secret_bps":       rate_estimate,
         "sifted_bps":       m.sifted_key_rate_bps,
-        "abort":            m.abort,
+        "threshold_exceeded": assessment.get("threshold_exceeded"),
+        "rate_estimate_status": rate_status,
+        "verification_status": assessment.get("verification_status", "unknown"),
         "dead_discards":    m.dead_time_discards,
         "afterpulse":       m.afterpulse_clicks,
         "eve_frac":         m.eve_intercepted_fraction,
         "eve_info":         m.eve_information_estimate,
+        "assessment":       assessment,
+        "classical":        result.classical,
+        "decoy":            result.decoy,
+        "decoy_security":   decoy_security,
+        "bell":             result.bell,
         "raw_result":       result,
     }
+    _record_artifact_row(scenario, payload)
+    return payload
 
 
 def header(title: str) -> None:
@@ -134,7 +205,7 @@ def exp18_clock_offset_nearest_vs_discard():
         effective = ParameterResolver().scenario_at(scen_discard, time_s=t)
         offset = effective.timing.clock_offset_s * 1e9
         r = run(effective)
-        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {r['qber']:8.4f} | {r['secret_bps']:12.2f}")
+        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {_format_optional(r['qber'], '8.4f')} | {_format_optional(r['secret_bps'], '12.2f')}")
 
     # --- CASO 2: POLÍTICA NEAREST (Rampa Fina) ---
     subheader("Caso 2: Política NEAREST (Rampa Fina 0.0 a 1.5 ns, gate_width=1.0 ns)")
@@ -149,7 +220,7 @@ def exp18_clock_offset_nearest_vs_discard():
         effective = ParameterResolver().scenario_at(scen_nearest_fine, time_s=t)
         offset = effective.timing.clock_offset_s * 1e9
         r = run(effective)
-        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {r['qber']:8.4f} | {r['secret_bps']:12.2f}")
+        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {_format_optional(r['qber'], '8.4f')} | {_format_optional(r['secret_bps'], '12.2f')}")
 
     # --- CASO 3: POLÍTICA NEAREST (Rampa Gruesa) ---
     subheader("Caso 3: Política NEAREST (Rampa Gruesa 0.0 a 60.0 ns, period=100 ns)")
@@ -164,7 +235,7 @@ def exp18_clock_offset_nearest_vs_discard():
         effective = ParameterResolver().scenario_at(scen_nearest_coarse, time_s=t)
         offset = effective.timing.clock_offset_s * 1e9
         r = run(effective)
-        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {r['qber']:8.4f} | {r['secret_bps']:12.2f}")
+        print(f"  {t:6.1f} | {offset:8.2f} ns | {r['detected']:8d} | {r['sifted']:8d} | {_format_optional(r['qber'], '8.4f')} | {_format_optional(r['secret_bps'], '12.2f')}")
 
     print("""
   CONCLUSIÓN: Con 'discard', a partir de offset = 0.6 ns (excede 0.5 ns de la ventana),
@@ -202,8 +273,8 @@ def exp19_afterpulse_clock_rate_dead_time_interaction():
 
     rates = [10_000.0, 100_000.0, 1_000_000.0, 5_000_000.0, 10_000_000.0]
 
-    print(f"  {'clock_rate':>12} | {'period':>10} | {'detected':>8} | {'dead_disc':>10} | {'afterpulse':>10} | {'QBER':>8}")
-    print(f"  {'-'*12} | {'-'*10} | {'-'*8} | {'-'*10} | {'-'*10} | {'-'*8}")
+    print(f"  {'clock_rate':>12} | {'period':>10} | {'detected':>8} | {'dead_time_discards':>18} | {'afterpulse':>10} | {'QBER':>8}")
+    print(f"  {'-'*12} | {'-'*10} | {'-'*8} | {'-'*18} | {'-'*10} | {'-'*8}")
 
     for rate in rates:
         period_ns = (1.0 / rate) * 1e9
@@ -224,14 +295,15 @@ def exp19_afterpulse_clock_rate_dead_time_interaction():
         r = run(scenario)
         print(
             f"  {rate/1e3:10.1f} kHz | {period_ns:7.1f} ns | {r['detected']:8d} | "
-            f"{r['dead_discards']:10d} | {r['afterpulse']:10d} | {r['qber']:8.4f}"
+            f"{r['dead_discards']:10d} | {r['afterpulse']:10d} | {_format_optional(r['qber'], '8.4f')}"
         )
 
     print("""
   CONCLUSIÓN: Observa cómo a 1 MHz (periodo = 1000 ns), el dead time de 1 microsegundo
   es exactamente 1 slot. A 10 MHz (periodo = 100 ns), el dead time de 1 microsegundo
-  bloquea los siguientes 10 slots. Esto se ve en el colosal aumento de 'dead_disc' (2594
-  descartes a 10 MHz). Al bloquear los slots, el detector físicamente no puede hacer
+  bloquea los siguientes 10 slots. El número de ``dead_time_discards`` se debe leer de la salida de
+  cada ejecución, porque puede cambiar con la semilla y la implementación del backend.
+  Al bloquear los slots, el detector físicamente no puede hacer
   clicks de afterpulse continuos, limitando el ruido acumulado y alterando el QBER.
 """)
 
@@ -315,10 +387,26 @@ def exp20_decoy_state_temporal_eavesdropping():
         for key in ["signal", "decoy", "vacuum"]:
             stats = res.decoy.get(key, {})
             gain = stats.get("gain", 0.0)
-            qber_val = stats.get("qber", 0.0)
+            qber_val = stats.get("qber") if stats.get("qber_defined") else None
             pulses_val = stats.get("pulses", 0)
             det_val = stats.get("detected", 0)
-            print(f"  {key:<10} | {pulses_val:8d} | {det_val:8d} | {gain:8.5f} | {qber_val:8.4f}")
+            print(
+                f"  {key:<10} | {pulses_val:8d} | {det_val:8d} | {gain:8.5f} | "
+                f"{_format_optional(qber_val, '8.4f')}"
+            )
+
+        security = r["decoy_security"]
+        security_status = security.get("data_status", "unavailable")
+        security_rate = (
+            security.get("secret_key_rate_bps")
+            if security_status == "available"
+            else None
+        )
+        print(
+            "  Decoy security: "
+            f"status={security_status}, "
+            f"secret_key_rate_bps={_format_optional(security_rate, '.2f')}"
+        )
 
     print("""
   CONCLUSIÓN: Durante el ataque (t=5.5s), el QBER de 'signal' y 'decoy' salta a ~25%
@@ -330,33 +418,29 @@ def exp20_decoy_state_temporal_eavesdropping():
 
 # ═════════════════════════════════════════════════════════════════════════════
 # EXPERIMENTO 21
-# La trampa de la amplificación de privacidad con polarización rotada dinámicamente
+# Rotación de fase dinámica y QBER dependiente de la base
 # ═════════════════════════════════════════════════════════════════════════════
 def exp21_dynamic_polarization_y_rotation():
-    header("EXP 21 – Rotación Coherente: La trampa de la amplificación de privacidad")
+    header("EXP 21 – Rotación de fase: efecto dependiente de la base")
 
     print("""
   HIPÓTESIS INGENUA: A mayor rotación de polarización introducida por el canal,
   peores resultados y menor tasa de clave secreta obtendremos de forma monótona.
   
-  REALIDAD: Debido a la periodicidad de la esfera de Bloch, los errores siguen un
-  comportamiento trigonométrico sinusoidal:
-  - Rotación Y = 0 (0 deg): Sin ruido. QBER = 0. Tasa secreta = Máxima.
-  - Rotación Y = pi/4 (45 deg): Mezcla de bases Z y X máxima. QBER = 50%. Clave secreta = 0.
-  - Rotación Y = pi/2 (90 deg): Inversión lógica perfecta. QBER = 100%.
-    ¡Sorprendentemente, la información de Alice y Bob está perfectamente correlacionada
-    (de forma inversa)! Si no abortamos, la tasa de clave secreta teórica (asintótica)
-    vuelve a ser del 100% porque la entropía de los errores corregidos es cero: h2(1.0) = 0.
-  - Rotación Y = pi (180 deg): Fase e inversión restauradas. QBER = 0. Clave secreta = Máxima.
+  REALIDAD: Para la rotación Rz que usa este experimento, los estados medidos en Z
+  solo adquieren una fase global y no cambian su bit. En la base X el error de una
+  medida correcta es sin²(theta/2). Con bases BB84 equiprobables, la QBER esperada es
+  aproximadamente 0,5·sin²(theta/2):
+  - theta = 0: QBER = 0.
+  - theta = pi/2: QBER = 0,25.
+  - theta = pi: los bits Z no cambian, los bits X se invierten y QBER ≈ 0,5.
+  - theta = 3pi/2: QBER = 0,25.
+  - theta = 2pi: QBER = 0.
 
-  NOTA DE SIMULACIÓN (QISKIT ARTEFACTO DE SEMILLA):
-  El QBER obtenido aquí es exactamente 0.0000 para 22.5 y 45.0 grados, y exactamente
-  1.0000 para 135.0, 157.5 y 180.0 grados. Esto se debe a que el StatevectorSampler de
-  Qiskit, cuando es instanciado con una semilla determinista (seed), reinicia el generador
-  aleatorio interno para cada circuito del lote. Para shots=1, esto hace que el resultado
-  sea determinista según si la probabilidad del estado supera un umbral U definido por la
-  semilla (aquí U approx. 0.6). A 90 grados la probabilidad es 50%, lo que interactúa de forma
-  mixta según la base y el bit preparado.
+  La tasa se interpreta mediante ``result.assessment`` y su estado de estimación.
+  No debe reaparecer una tasa positiva por aplicar h2(1)=0 a un QBER igual a 1:
+  una muestra con QBER no admisible o sin datos suficientes no constituye una tasa
+  secreta disponible.
 """)
 
     scenario = Scenario(
@@ -366,41 +450,41 @@ def exp21_dynamic_polarization_y_rotation():
         channel=ChannelConfig(kind="fiber", distance_km=0.0, fixed_loss_db=0.0),
         detector=DetectorConfig(kind="threshold", efficiency=1.0),  # ideal para ver el efecto puro
         post_processing=PostProcessingConfig(
-            qber_abort_threshold=None,  # desactivado para ver la tasa teórica a QBER alto
+            qber_abort_threshold=None,  # la evaluación de la tasa sigue siendo autoritativa
             error_correction_efficiency=1.0,
         ),
         dynamic=DynamicConfig(
             parameter_schedules=(
                 ParameterSchedule(
-                    target="channel.polarization_rotation_y_rad",
-                    profile=LinearRampProfile(start_s=0.0, end_s=10.0, start_value=0.0, end_value=math.pi),
+                    target="channel.polarization_rotation_z_rad",
+                    profile=LinearRampProfile(start_s=0.0, end_s=20.0, start_value=0.0, end_value=2.0 * math.pi),
                 ),
             ),
         ),
     )
 
-    times = [0.0, 1.25, 2.5, 5.0, 7.5, 8.75, 10.0]
+    times = [0.0, 2.5, 5.0, 10.0, 15.0, 17.5, 20.0]
 
-    print(f"  {'time_s':>6} | {'ángulo Y':>12} | {'detected':>8} | {'sifted':>8} | {'QBER':>8} | {'secret_bps':>12}")
+    print(f"  {'time_s':>6} | {'ángulo Z':>12} | {'detected':>8} | {'sifted':>8} | {'QBER':>8} | {'secret_bps':>12}")
     print(f"  {'-'*6} | {'-'*12} | {'-'*8} | {'-'*8} | {'-'*8} | {'-'*12}")
 
     for t in times:
         effective = ParameterResolver().scenario_at(scenario, time_s=t)
-        angle_rad = effective.channel.polarization_rotation_y_rad
+        angle_rad = effective.channel.polarization_rotation_z_rad
         angle_deg = math.degrees(angle_rad)
         r = run(effective)
         print(
             f"  {t:6.1f} | {angle_deg:7.1f} deg ({angle_rad:4.2f}) | {r['detected']:8d} | "
-            f"{r['sifted']:8d} | {r['qber']:8.4f} | {r['secret_bps']:12.2f}"
+            f"{r['sifted']:8d} | {_format_optional(r['qber'], '8.4f')} | "
+            f"{_format_optional(r['secret_bps'], '12.2f')}"
         )
 
     print("""
-  CONCLUSIÓN: A 180 deg (pi, t=10.0s), Bob obtiene exactamente los bits originales (QBER=0).
-  A 90 deg (pi/2, t=5.0s), la mezcla es del 50%. A 135 deg y 180 deg (en esta simulación por
-  el efecto del seed), el QBER es de 1.0000. Pero como es determinista, la entropía del ruido
-  h2(1.0) = 0. Por ello, la secret_key_rate vuelve a su máximo (~500 bps). Sin embargo,
-  a 90 deg (t=5.0s) el QBER es 0.5000 (ruido aleatorio total), h2(0.5) = 1.0, la clave es
-  indescifrable y la tasa secreta cae a 0.
+  CONCLUSIÓN: A 180 deg (pi, t=10.0s), la base Z conserva sus bits pero la base X
+  se invierte; con bases equiprobables la QBER es aproximadamente 0,5 y no hay una
+  tasa secreta disponible. La QBER vuelve a cero a 360 deg porque Rz(2pi) solo aporta
+  una fase global. La semántica de la tasa se toma de ``rate_estimate_status``; no se
+  infiere una tasa positiva a partir de una QBER igual a 1 ni de una muestra vacía.
 """)
 
 
@@ -443,7 +527,9 @@ def exp22_detector_efficiency_vs_gate_width_solar():
         clock_rate_hz=1_000_000.0,
         seed=400,
         channel=ChannelConfig(kind="fiber", distance_km=15.0, attenuation_db_km=0.2, fixed_loss_db=0.0),
-        post_processing=PostProcessingConfig(qber_abort_threshold=0.11),  # Umbral normal de aborto
+        post_processing=PostProcessingConfig(
+            qber_abort_threshold=0.11,
+        ),  # umbral configurado para este escenario, no universal
     )
 
     # Detector A: Súper eficiente pero ancho
@@ -458,7 +544,7 @@ def exp22_detector_efficiency_vs_gate_width_solar():
 
     print("\n  Comparativa temporal bajo Sol creciente:")
     print(f"  {'time_s':>6} | {'bg_hz':>10} | {'DET A (Eff=90%, 2ns)':^31} | {'DET B (Eff=30%, 200ps)':^31}")
-    print(f"  {'':>6} | {'':>10} | {'QBER':>8} {'secret_bps':>12} {'abort':>8} | {'QBER':>8} {'secret_bps':>12} {'abort':>8}")
+    print(f"  {'':>6} | {'':>10} | {'QBER':>8} {'secret_bps':>12} {'threshold':>10} | {'QBER':>8} {'secret_bps':>12} {'threshold':>10}")
     print(f"  {'-'*6} | {'-'*10} | {'-'*31} | {'-'*31}")
 
     for t in times:
@@ -469,27 +555,51 @@ def exp22_detector_efficiency_vs_gate_width_solar():
         r_a = run(eff_a)
         r_b = run(eff_b)
 
-        abort_a = "YES" if r_a["abort"] else "no"
-        abort_b = "YES" if r_b["abort"] else "no"
+        threshold_a = _threshold_label(r_a["threshold_exceeded"])
+        threshold_b = _threshold_label(r_b["threshold_exceeded"])
 
         print(
-            f"  {t:6.1f} | {bg:10.0f} | {r_a['qber']:8.4f} {r_a['secret_bps']:12.2f} {abort_a:>8} | "
-            f"{r_b['qber']:8.4f} {r_b['secret_bps']:12.2f} {abort_b:>8}"
+            f"  {t:6.1f} | {bg:10.0f} | {_format_optional(r_a['qber'], '8.4f')} "
+            f"{_format_optional(r_a['secret_bps'], '12.2f')} {threshold_a:>10} | "
+            f"{_format_optional(r_b['qber'], '8.4f')} "
+            f"{_format_optional(r_b['secret_bps'], '12.2f')} {threshold_b:>10}"
         )
 
     print("""
-  CONCLUSIÓN: Con fondo bajo (t=0), el Detector A produce ~240 bps frente a los ~75 bps
-  del Detector B. Sin embargo, en cuanto el fondo sube a más de 30 MHz (t=7.5s y superior),
-  el Detector A acumula demasiado ruido solar, su QBER supera el 11% y aborta por seguridad
-  (secret=0). El Detector B, gracias a su ventana de puerta ultra estrecha de 200 ps,
-  minimiza el ruido de fondo, mantiene un QBER bajo y sigue produciendo clave segura.
+  CONCLUSIÓN: Con fondo bajo, el detector de mayor eficiencia puede producir más bits,
+  pero el resultado depende también de la ventana y del ruido. Cuando el fondo crece,
+  el Detector A puede superar el umbral configurado de este escenario y quedar sin tasa
+  estimada; el 11 % no es un umbral universal. El Detector B reduce el ruido integrado
+  gracias a su ventana estrecha, aunque la comparación no aísla una sola variable.
 """)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═════════════════════════════════════════════════════════════════════════════
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent / "artifacts" / "experimentos_dinamicos",
+        help="directory for the reproducibility JSON/CSV artifact",
+    )
+    parser.add_argument("--no-artifacts", action="store_true")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
+    _ARTIFACT_ROWS.clear()
+    _ARTIFACT_SCENARIOS.clear()
+    if args.no_artifacts:
+        print(
+            "WARNING: --no-artifacts opt-out disables the reproducibility "
+            "manifest and CSV for this run.",
+            file=sys.stderr,
+        )
+    _configure_console_output()
     print(SEPARATOR)
     print("  SUITE DE EXPERIMENTOS BB84 DINÁMICOS – RESULTADOS INESPERADOS Y EXPLICABLES")
     print("  Fase de Extensión (Fases 4.1, 5, 6 y timing avanzado) con Qiskit-QKD")
@@ -514,6 +624,20 @@ def main() -> None:
     print(f"\n{SEPARATOR}")
     print("  FIN DE LA SUITE DE EXPERIMENTOS DINÁMICOS")
     print(SEPARATOR)
+    if not args.no_artifacts:
+        try:
+            paths = write_artifact(
+                args.output_dir,
+                name="experimentos_dinamicos",
+                rows=_ARTIFACT_ROWS,
+                scenarios=_ARTIFACT_SCENARIOS,
+                generator_path=__file__,
+                command=[sys.executable, __file__, *sys.argv[1:]],
+            )
+            print(f"\nArtifact: {paths.manifest}")
+            print(f"CSV: {paths.csv}")
+        except OSError as exc:
+            print(f"\nNo se pudo escribir el artefacto: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

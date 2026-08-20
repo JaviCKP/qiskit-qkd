@@ -87,7 +87,7 @@ export function CurveRecipeBar({
               className={`min-w-[190px] rounded border px-3 py-2 text-left text-sm ${
                 active
                   ? 'border-cyan bg-cyan/10 text-cyan'
-                  : 'border-border bg-background/50 text-slate-300 hover:border-slate-500'
+                  : 'border-border bg-background/50 text-slate-300 hover:border-border-strong'
               }`}
               key={recipe.id}
               onClick={() => onChange(buildCurveRequest(recipe.id, mediumId))}
@@ -166,8 +166,8 @@ function targetLabel(target: string): string {
     'channel.depolarizing_probability': 'despolarizacion',
     'channel.pointing_jitter_rad': 'apuntamiento',
     'channel.atmospheric_extinction_db_km': 'atmosfera',
-    'channel.underwater_extinction_m_inv': 'extincion submarina',
+    'channel.underwater_extinction_m_inv': 'extinción submarina',
     'time_s': 'tiempo',
   }
-  return labels[target] ?? 'parametro'
+  return labels[target] ?? 'parámetro'
 }

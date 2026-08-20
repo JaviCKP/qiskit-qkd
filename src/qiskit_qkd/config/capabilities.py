@@ -228,6 +228,7 @@ def _build_parameter_capabilities() -> dict[str, ParameterCapability]:
         "post_processing.decoy_security_estimation_enabled",
         "post_processing.decoy_security_method",
         "eavesdropper.kind",
+        "eavesdropper.attack_position",
         "e91.bell_state",
         "e91.alice_angles_rad",
         "e91.bob_angles_rad",
@@ -298,6 +299,15 @@ def _build_parameter_capabilities() -> dict[str, ParameterCapability]:
         protocols=("bb84",),
         source_kinds=sorted(WEAK_COHERENT_SOURCE_KINDS),
         scope="Splits multiphoton emissions from weak-coherent sources only.",
+    )
+    registry["eavesdropper.attack_position"] = _parameter(
+        "eavesdropper.attack_position",
+        protocols=("bb84",),
+        scope=(
+            "Location of the active Eve model relative to channel loss: "
+            "post_loss is a pedagogical attack applied after sampled loss; "
+            "pre_loss places Eve before the channel-loss segment."
+        ),
     )
 
     channel_groups = {
@@ -841,6 +851,9 @@ def _ignored_parameter_issues(scenario: Scenario) -> list[CapabilityIssue]:
     ):
         for name, value in config.to_dict().items():
             defaults[f"{section_name}.{name}"] = value
+    # EveConfig omits the default attack position from the schema-v1 wire
+    # payload, but applicability metadata still needs its canonical default.
+    defaults["eavesdropper.attack_position"] = EveConfig().attack_position
 
     issues: list[CapabilityIssue] = []
     for target, default in defaults.items():

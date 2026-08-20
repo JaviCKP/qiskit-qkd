@@ -28,5 +28,6 @@ def detector_from_config(config: DetectorConfig) -> ThresholdDetector:
             double_click_policy=config.double_click_policy,
             dead_time_s=config.dead_time_s,
             afterpulse_probability=config.afterpulse_probability,
+            afterpulse_tau_s=config.afterpulse_tau_s,
         )
     raise ValueError(f"Unsupported detector kind: {config.kind!r}")

@@ -9,6 +9,7 @@ from qiskit_qkd import (
     QiskitSamplerBackend,
     Scenario,
 )
+from qiskit_qkd.backends import backend_from_scenario
 from qiskit_qkd.qiskit_integration import AerNoiseModelAdapter, TranspilationOptions
 
 
@@ -26,7 +27,12 @@ def run_case(label: str, scenario: Scenario) -> tuple[str, float, dict]:
             seed_transpiler=scenario.seed + 2,
         ),
     )
-    result = BB84Protocol().run(scenario, backend=backend)
+    # This example intentionally injects Aer noise/transpilation options; the
+    # canonical resolver still validates that the backend matches the scenario.
+    result = BB84Protocol().run(
+        scenario,
+        backend=backend_from_scenario(scenario, backend=backend),
+    )
     return label, result.metrics.qber, result.qiskit
 
 

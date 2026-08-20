@@ -300,6 +300,36 @@ def test_pns_split_probability_requires_a_multiphoton_source() -> None:
     ].applicable_protocols == ("bb84",)
 
 
+@pytest.mark.parametrize("attack_position", ["post_loss", "pre_loss"])
+def test_attack_position_is_effective_only_with_an_active_bb84_eve(
+    attack_position: str,
+) -> None:
+    no_eve = _scenario(
+        eavesdropper=EveConfig(attack_position=attack_position),
+    )
+    no_eve_snapshot = effective_parameter_snapshot(no_eve)
+    assert "eavesdropper.attack_position" in no_eve_snapshot["ignored_parameters"]
+    if attack_position != "post_loss":
+        assert any(
+            issue.loc == "eavesdropper.attack_position"
+            for issue in capability_issues(no_eve)
+        )
+
+    pns = _scenario(
+        source=SourceConfig(kind="weak_coherent", mean_photon_number=0.5),
+        eavesdropper=EveConfig(
+            kind="photon_number_splitting",
+            attack_position=attack_position,
+        ),
+    )
+    pns_snapshot = effective_parameter_snapshot(pns)
+    assert "eavesdropper.attack_position" in pns_snapshot["consumed_parameters"]
+    capability = PARAMETER_CAPABILITIES["eavesdropper.attack_position"]
+    assert capability.applicable_protocols == ("bb84",)
+    assert "post_loss" in capability.scope
+    assert "pre_loss" in capability.scope
+
+
 @pytest.mark.parametrize(
     "target",
     [

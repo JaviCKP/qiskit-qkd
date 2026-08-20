@@ -129,6 +129,28 @@ class Metrics:
             "chsh_s": self.chsh_s,
         }
 
+    def to_observed_dict(self) -> JSONObject:
+        """Return the metrics visible in an Alice/Bob result view.
+
+        The two Eve aggregate fields are retained by :meth:`to_dict` for
+        schema-v1 compatibility, but they are simulator-side information and
+        must not be presented as protocol observations.  This additive view
+        deliberately has the same metric keys apart from those fields.
+        """
+
+        data = self.to_dict()
+        data.pop("eve_intercepted_fraction", None)
+        data.pop("eve_information_estimate", None)
+        return data
+
+    def to_internal_diagnostics_dict(self) -> JSONObject:
+        """Return simulator-only aggregate diagnostics, including Eve data."""
+
+        return {
+            "eve_intercepted_fraction": self.eve_intercepted_fraction,
+            "eve_information_estimate": self.eve_information_estimate,
+        }
+
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
         reject_unknown_fields(

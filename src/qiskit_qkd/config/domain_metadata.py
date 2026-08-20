@@ -106,6 +106,12 @@ def _flatten_defaults(value: Mapping[str, Any]) -> dict[str, object]:
                 flattened[f"{section}.{field}"] = field_value
         else:
             flattened[f"scenario.{section}"] = section_value
+    # ``EveConfig.to_dict`` omits the default attack position to preserve the
+    # schema-v1 wire representation.  Domain metadata still publishes the
+    # validated default so clients can render the new capability field.
+    eavesdropper = value.get("eavesdropper")
+    if isinstance(eavesdropper, Mapping) and "attack_position" not in eavesdropper:
+        flattened["eavesdropper.attack_position"] = EveConfig().attack_position
     return flattened
 
 
@@ -169,6 +175,7 @@ def _options_for(key: str) -> tuple[str, ...]:
             "intercept_resend",
             "photon_number_splitting",
         ),
+        "eavesdropper.attack_position": ("post_loss", "pre_loss"),
         "e91.bell_state": sorted(E91_BELL_STATES),
     }
     return tuple(options.get(key, ()))

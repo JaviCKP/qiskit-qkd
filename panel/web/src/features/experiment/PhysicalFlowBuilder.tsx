@@ -118,7 +118,7 @@ export function PhysicalFlowBuilder({
       description: 'Qué se envía y con qué protocolo.',
       sections: ['protocol', 'source', 'eavesdropper', 'e91'],
       primary: sourcePrimary,
-      accent: 'from-violet-400/20 to-transparent text-violet-300',
+      accent: 'from-violet/[0.14] to-transparent text-violet',
       Icon: Send,
     },
     {
@@ -128,7 +128,7 @@ export function PhysicalFlowBuilder({
       description: 'Por dónde viaja la señal y qué la perturba.',
       sections: ['channel', 'timing', 'dynamic'],
       primary: channelPrimary[mediumId],
-      accent: 'from-cyan/20 to-transparent text-cyan',
+      accent: 'from-cyan/[0.14] to-transparent text-cyan',
       Icon: Route,
     },
     {
@@ -138,7 +138,7 @@ export function PhysicalFlowBuilder({
       description: 'Cómo se detecta y procesa lo recibido.',
       sections: ['detector', 'post_processing'],
       primary: receiverPrimary,
-      accent: 'from-emerald-400/20 to-transparent text-emerald-300',
+      accent: 'from-success/[0.14] to-transparent text-success',
       Icon: RadioReceiver,
     },
   ]
@@ -179,14 +179,14 @@ export function PhysicalFlowBuilder({
     <section aria-labelledby="physical-flow-title" className="min-w-0">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan">Configura el enlace</p>
-          <h2 className="mt-1 text-xl font-semibold text-white" id="physical-flow-title">
+          <p className="text-2xs font-semibold uppercase tracking-eyebrow text-cyan">Configura el enlace</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-white" id="physical-flow-title">
             Emisor <span className="text-slate-600">→</span> canal <span className="text-slate-600">→</span> receptor
           </h2>
           <p className="mt-1 text-sm text-slate-400">Sólo aparecen los controles que tienen efecto en el escenario elegido.</p>
         </div>
-        <p className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-slate-400">
-          {visibleFields.length} parámetros compatibles
+        <p className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-slate-400">
+          <span className="font-mono font-medium text-slate-200">{visibleFields.length}</span> parámetros compatibles
         </p>
       </div>
 
@@ -201,15 +201,15 @@ export function PhysicalFlowBuilder({
                   <ArrowRight size={19} />
                 </div>
               ) : null}
-              <article className="min-w-0 rounded-2xl border border-border bg-surface shadow-[0_16px_50px_rgba(0,0,0,0.16)]">
+              <article className="min-w-0 rounded-panel border border-border bg-surface shadow-panel transition-shadow hover:shadow-lifted">
                 <div className={`bg-gradient-to-br ${block.accent} border-b border-border px-4 py-4 sm:px-5`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">{block.eyebrow}</p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">{block.title}</h3>
+                      <p className="text-2xs font-semibold uppercase tracking-eyebrow opacity-90">{block.eyebrow}</p>
+                      <h3 className="mt-1 text-lg font-semibold tracking-tight text-white">{block.title}</h3>
                       <p className="mt-1 text-sm text-slate-400">{block.description}</p>
                     </div>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-current/20 bg-background/60">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control border border-current/25 bg-background/60">
                       <block.Icon aria-hidden="true" size={19} />
                     </div>
                   </div>
@@ -224,7 +224,7 @@ export function PhysicalFlowBuilder({
                       </span>
                       <select
                         aria-label="Medio físico"
-                        className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-white focus:border-cyan"
+                        className="mt-1.5 h-10 w-full rounded-control border border-border bg-background px-3 text-sm text-white transition-colors hover:border-border-strong focus:border-cyan"
                         onChange={(event) => onSelectMedium(event.target.value as MediumId)}
                         value={mediumId}
                       >
@@ -255,12 +255,14 @@ export function PhysicalFlowBuilder({
                     <div className="flex items-center gap-2 border-t border-border pt-3">
                       <button
                         aria-haspopup="dialog"
-                        className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left text-sm font-medium text-slate-300 hover:text-white"
+                        className="group/adv flex min-w-0 flex-1 items-center justify-between gap-3 rounded-control px-2 py-1.5 -mx-2 text-left text-sm font-medium text-slate-300 transition-colors hover:bg-white/[0.04] hover:text-white"
                         onClick={() => setOpenPanel(block.id)}
                         type="button"
                       >
                         <span className="flex items-center gap-2"><SlidersHorizontal aria-hidden="true" size={15} /> Más ajustes de {block.title.toLowerCase()}</span>
-                        <span className="text-xs text-slate-600">{advancedFields.length}</span>
+                        <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-2xs text-slate-400 transition-colors group-hover/adv:bg-overlay group-hover/adv:text-slate-200">
+                          {advancedFields.length}
+                        </span>
                       </button>
                       <InfoTip label={`Más ajustes de ${block.title.toLowerCase()}`} text={advancedHelp(block.id)} />
                     </div>
@@ -269,7 +271,7 @@ export function PhysicalFlowBuilder({
                     <div className="flex items-center gap-2 border-t border-border pt-3">
                       <button
                         aria-haspopup="dialog"
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium text-slate-300 hover:text-white"
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-control px-2 py-1.5 -mx-2 text-left text-sm font-medium text-slate-300 transition-colors hover:bg-white/[0.04] hover:text-white"
                         onClick={() => setOpenPanel('temporal')}
                         type="button"
                       >
@@ -356,12 +358,16 @@ function CompactField({
           <label className="text-xs font-medium text-slate-300" htmlFor={controlId}>{friendlyLabel(field)}</label>
           <InfoTip label={friendlyLabel(field)} text={fieldHelp(field.key)} />
         </span>
-        {edited ? <span className="text-[10px] uppercase tracking-[0.08em] text-cyan">editado</span> : null}
+        {edited ? (
+          <span className="shrink-0 rounded-full bg-cyan/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-[0.08em] text-cyan">
+            editado
+          </span>
+        ) : null}
       </div>
       <div className="mt-1.5 flex min-w-0 items-start gap-2">
         {friendlyOptions ? (
           <select
-            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-white focus:border-cyan"
+            className="h-9 min-w-0 flex-1 rounded-control border border-border bg-background px-3 text-sm text-white transition-colors hover:border-border-strong focus:border-cyan"
             id={controlId}
             onChange={(event) => onChange(field.key, event.target.value)}
             value={String(value ?? '')}
@@ -371,7 +377,7 @@ function CompactField({
         ) : (
           <FieldControl field={field} id={controlId} onChange={onChange} value={value} />
         )}
-        {field.unit ? <span className="mt-2.5 max-w-16 shrink-0 text-xs text-slate-500">{field.unit}</span> : null}
+        {field.unit ? <span className="mt-2 max-w-16 shrink-0 font-mono text-xs text-slate-500">{field.unit}</span> : null}
       </div>
       {error ? <p className="mt-1.5 text-xs text-danger">{error}</p> : null}
     </div>
@@ -534,10 +540,10 @@ function SourceEmissionGuide({ scenario, onOpenSettings }: { scenario: ScenarioP
   if (!isCoherent) return null
   const intensities = scenario.source.decoy_intensities
   return (
-    <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-3 text-xs">
+    <div className="rounded-control border border-violet/25 bg-violet/[0.06] p-3 text-xs">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-medium text-violet-200">La emisión se controla con intensidades μ</p>
+          <p className="font-medium text-violet">La emisión se controla con intensidades μ</p>
           <p className="mt-1 leading-5 text-slate-400">
             {isDecoy
               ? `Esta fuente elige entre ${intensities.length} intensidades de señal/decoy; por eso la probabilidad de emisión ideal no se aplica.`
@@ -547,7 +553,7 @@ function SourceEmissionGuide({ scenario, onOpenSettings }: { scenario: ScenarioP
         <InfoTip label="Control de emisión coherente" text={fieldHelp(isDecoy ? 'source.decoy_intensities' : 'source.mean_photon_number')} />
       </div>
       {isDecoy ? (
-        <button className="mt-2 font-medium text-violet-300 hover:text-white" onClick={onOpenSettings} type="button">
+        <button className="mt-2 font-medium text-violet transition-colors hover:text-white" onClick={onOpenSettings} type="button">
           Editar intensidades y probabilidades →
         </button>
       ) : null}

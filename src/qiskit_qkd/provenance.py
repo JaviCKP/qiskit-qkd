@@ -6,13 +6,15 @@ import hashlib
 import os
 import platform as platform_module
 import re
+import subprocess
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from functools import lru_cache
 from importlib import import_module, metadata
 from pathlib import Path
 from typing import Any
 
-from ._json import JSONObject, JSONValue, normalize_json_object
+from ._json import JSONObject, JSONValue, normalize_json_object, normalize_json_value
 
 try:
     _build_version = import_module(f"{__package__}._version")
@@ -40,6 +42,177 @@ RUNTIME_PROVENANCE_FIELDS = frozenset(
 )
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent
+
+
+def _utc_now() -> str:
+    """Return an unambiguous, timezone-aware UTC timestamp."""
+
+    return datetime.now(UTC).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def canonical_json(value: Any) -> str:
+    """Serialize a scenario or JSON-like value canonically.
+
+    ``Scenario`` already exposes the canonical digest used by the package.  The
+    helper intentionally accepts mappings too, which keeps artifact creation
+    usable with archived scenarios and lightweight test doubles.
+    """
+
+    from ._json import dumps_canonical
+
+    to_dict = getattr(value, "to_dict", None)
+    payload = to_dict() if callable(to_dict) else value
+    if not isinstance(payload, Mapping):
+        raise TypeError("canonical JSON requires a mapping or to_dict() object")
+    return dumps_canonical(payload)
+
+
+def scenario_provenance(scenario: Any) -> JSONObject:
+    """Return canonical scenario JSON and its SHA-256 digest."""
+
+    encoded = canonical_json(scenario)
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    # Scenario.digest() intentionally omits the wire schema marker.  Preserve
+    # that scientific identity when available instead of hashing transport
+    # metadata from ``to_dict``.
+    scientific_digest = getattr(scenario, "digest", None)
+    if callable(scientific_digest):
+        candidate = scientific_digest()
+        if isinstance(candidate, str) and re.fullmatch(r"[0-9a-f]{64}", candidate):
+            digest = candidate
+    return {
+        "canonical_json": encoded,
+        "digest": digest,
+    }
+
+
+def extract_seeds(value: Any) -> dict[str, JSONValue]:
+    """Collect every JSON value whose field name contains ``seed``.
+
+    Paths are retained so callers can distinguish a scenario seed from a
+    backend, simulator, transpiler, or post-processing seed.  Duplicate values
+    at different paths are intentionally not collapsed: the manifest records
+    all available provenance, without guessing which seed was authoritative.
+    """
+
+    seeds: dict[str, JSONValue] = {}
+
+    def walk(item: Any, path: str) -> None:
+        to_dict = getattr(item, "to_dict", None)
+        if callable(to_dict):
+            try:
+                item = to_dict()
+            except Exception:
+                return
+        if isinstance(item, Mapping):
+            for key, child in item.items():
+                child_path = f"{path}.{key}" if path else str(key)
+                if "seed" in str(key).lower():
+                    try:
+                        seeds[child_path] = normalize_json_value(
+                            child, path=child_path
+                        )
+                    except (TypeError, ValueError):
+                        # A non-JSON RNG object is not provenance we can safely
+                        # persist; leave it absent instead of inventing a value.
+                        pass
+                walk(child, child_path)
+        elif isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                walk(child, f"{path}[{index}]")
+
+    walk(value, "")
+    return dict(sorted(seeds.items()))
+
+
+def _git_root(start: Path | None = None) -> Path | None:
+    candidate = (start or _PACKAGE_ROOT).resolve()
+    if candidate.is_file():
+        candidate = candidate.parent
+    for parent in (candidate, *candidate.parents):
+        if (parent / ".git").exists():
+            return parent
+    return None
+
+
+def vcs_provenance(root: str | os.PathLike[str] | None = None) -> JSONObject:
+    """Describe VCS identity, including stale generated version metadata.
+
+    This function never fabricates a commit.  A checkout without Git reports
+    ``commit='unknown'`` unless the generated package metadata carries one, and
+    labels that fallback with lower confidence.  A dirty checkout is explicit.
+    """
+
+    repo = _git_root(Path(root) if root is not None else None)
+    generated = getattr(_build_version, "__commit__", None)
+    generated = generated.strip() if isinstance(generated, str) else None
+    generated_normalized = generated.removeprefix("g") if generated else None
+    source = "unavailable"
+    commit = "unknown"
+    dirty: bool | None = None
+    git_available = repo is not None
+    git_error: str | None = None
+    if repo is not None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            commit = result.stdout.strip() or "unknown"
+            status = subprocess.run(
+                ["git", "-C", str(repo), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            dirty = bool(status.stdout.strip())
+            source = "git"
+        except (OSError, subprocess.CalledProcessError) as exc:
+            git_available = False
+            git_error = str(exc)
+    if commit == "unknown" and generated_normalized:
+        commit = generated_normalized
+        source = "setuptools_scm" if generated_normalized else "unavailable"
+        dirty_value = getattr(_build_version, "__dirty__", False)
+        dirty = dirty_value if isinstance(dirty_value, bool) else None
+    mismatch = bool(
+        commit != "unknown"
+        and generated_normalized
+        and generated_normalized.lower() != commit.lower()
+    )
+    confidence = (
+        "high"
+        if source == "git" and not mismatch
+        else "medium"
+        if source == "git"
+        else "low"
+        if source == "setuptools_scm"
+        else "none"
+    )
+    payload: JSONObject = {
+        "commit": commit,
+        "dirty": dirty,
+        "source": source,
+        "confidence": confidence,
+        "commit_confidence": confidence,
+        # A generated _version.py commit is useful provenance but cannot be
+        # verified once the checkout is unavailable (or has since changed).
+        "commit_verified": source == "git" and not mismatch,
+        "metadata_stale": source != "git" and generated_normalized is not None,
+        "git_available": git_available,
+        "version_metadata_commit": generated_normalized or "unknown",
+        "version_metadata_source": getattr(
+            _build_version, "__vcs_metadata_source__", "unavailable"
+        ),
+        "metadata_mismatch": mismatch,
+    }
+    if git_error:
+        payload["git_error"] = git_error
+    return payload
 
 
 def _package_version(build_metadata: object | None) -> str:

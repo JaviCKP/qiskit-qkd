@@ -26,6 +26,7 @@ _COMPACT_METADATA_FIELDS = frozenset(
 )
 _PATH_SEPARATOR = "\x1f"
 _MISSING = object()
+_COMPACT_JSON_VALUE_PREFIX = "__qiskit_qkd_json__"
 _COMPACT_ROW_INVARIANT_FIELDS = frozenset(
     {
         "abort_is_legacy",
@@ -469,7 +470,7 @@ def expand_compact_sweep_summary(value: Any) -> list[SweepRow]:
         for index, item in enumerate(raw_values[:raw_count]):
             if index not in omitted_indexes:
                 output[index][key] = normalize_json_value(
-                    item,
+                    _expand_summary_value(item),
                     path=f"sweep summary.{key}",
                 )
     return output
@@ -529,7 +530,7 @@ def _compact_summary_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 omitted.append(index)
             else:
                 values.append(
-                    normalize_json_value(row[key], path=f"sweep summary.{key}"),
+                    _compact_summary_value(row[key], key=key),
                 )
         columns[key] = values
         if omitted:
@@ -542,6 +543,38 @@ def _compact_summary_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if missing:
         result["missing"] = missing
     return result
+
+
+def _compact_summary_value(value: Any, *, key: str) -> Any:
+    """Keep confidence intervals scalar in the versioned panel contract."""
+
+    if _is_confidence_interval_payload(value):
+        normalized = normalize_json_value(value, path=f"sweep summary.{key}")
+        return _COMPACT_JSON_VALUE_PREFIX + json.dumps(
+            normalized,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    return normalize_json_value(value, path=f"sweep summary.{key}")
+
+
+def _expand_summary_value(value: Any) -> Any:
+    if not isinstance(value, str) or not value.startswith(_COMPACT_JSON_VALUE_PREFIX):
+        return value
+    encoded = value[len(_COMPACT_JSON_VALUE_PREFIX) :]
+    try:
+        decoded = json.loads(encoded)
+    except json.JSONDecodeError:
+        return value
+    return decoded if _is_confidence_interval_payload(decoded) else value
+
+
+def _is_confidence_interval_payload(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"level", "method", "n", "bounds"}
+    )
 
 
 def _expand_metadata(

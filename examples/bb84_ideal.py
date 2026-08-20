@@ -9,9 +9,9 @@ import warnings
 from qiskit_qkd import (
     BB84Protocol,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
 )
+from qiskit_qkd.backends import backend_from_scenario
 
 _BOX_DRAWING_ASCII = str.maketrans(
     {
@@ -71,7 +71,7 @@ def main() -> None:
         ),
         event_sample_size=5,
     )
-    backend = QiskitSamplerBackend(seed=scenario.seed)
+    backend = backend_from_scenario(scenario)
     result = BB84Protocol().run(scenario, backend=backend)
 
     print("Ideal BB84 summary")

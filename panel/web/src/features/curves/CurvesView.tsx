@@ -355,20 +355,28 @@ export function CurvesView({
     <div className="min-w-0 space-y-5 p-4 sm:p-6">
       <header className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <button className="mb-2 flex items-center gap-1 text-xs text-slate-500 hover:text-cyan" onClick={onBackToExperiment} type="button"><ArrowLeft aria-hidden="true" size={13} /> Volver al experimento</button>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan">Estudio visual</p>
-          <h1 className="mt-1 text-xl font-semibold text-white">Análisis y curvas</h1>
+          <button
+            className="mb-2 flex items-center gap-1 rounded-control px-1.5 py-1 -mx-1.5 text-xs text-slate-500 transition-colors hover:bg-white/5 hover:text-cyan"
+            onClick={onBackToExperiment}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={13} /> Volver al experimento
+          </button>
+          <p className="text-2xs font-semibold uppercase tracking-eyebrow text-cyan">Estudio visual</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-white">Análisis y curvas</h1>
           <p className="mt-1 text-sm text-slate-400">Cada curva conserva un run o draft como punto de partida reproducible.</p>
         </div>
-        <p className="font-mono text-xs text-slate-500">{curves.length} curva{curves.length === 1 ? '' : 's'} guardada{curves.length === 1 ? '' : 's'} en el experimento</p>
+        <p className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-slate-400">
+          <span className="font-mono font-medium text-slate-200">{curves.length}</span> curva{curves.length === 1 ? '' : 's'} guardada{curves.length === 1 ? '' : 's'}
+        </p>
       </header>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
         <Panel className="min-w-0 p-4">
           <h2 className="text-sm font-semibold text-white">¿Qué quieres estudiar?</h2>
           <div className="mt-4 space-y-4">
-            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-violet-300">Este run es el punto de partida</p>
+            <div className="rounded-panel border border-violet/30 bg-violet/[0.06] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-violet">Este run es el punto de partida</p>
               <SelectField label="Escenario base" onChange={changeBase} options={[{ value: 'draft', label: 'Draft actual' }, ...runs.map((run) => ({ value: `run:${run.jobId}`, label: `${run.label} · ${run.digest.slice(0, 8)}` }))]} value={baseId} />
               <p className="mt-2 text-xs leading-5 text-slate-400">El snapshot no se modifica. Una curva necesita calcular nuevos puntos variando sólo el eje elegido; el resto de sus ajustes permanece fijo.</p>
             </div>
@@ -376,23 +384,23 @@ export function CurvesView({
               {availableRecipes.map((recipe) => (
                 <button
                   aria-pressed={recipe.id === recipeId}
-                  className={`rounded-xl border px-3 py-3 text-left transition ${recipe.id === recipeId ? 'border-cyan/70 bg-cyan/10 text-white' : 'border-border bg-background/45 text-slate-300 hover:border-slate-500 hover:bg-raised'}`}
+                  className={`rounded-panel border px-3 py-3 text-left transition ${recipe.id === recipeId ? 'border-cyan/70 bg-cyan/10 text-white' : 'border-border bg-background/45 text-slate-300 hover:border-border-strong hover:bg-raised'}`}
                   key={recipe.id}
                   onClick={() => applyRecipe(recipe.id)}
                   type="button"
                 >
                   <span className="block text-sm font-medium">{recipe.label}</span>
-                  <span className="mt-1 block text-[11px] leading-4 text-slate-500">{recipe.question}</span>
+                  <span className="mt-1 block text-2xs leading-4 text-slate-500">{recipe.question}</span>
                 </button>
               ))}
             </div>
-            <div className="rounded-xl border border-cyan/20 bg-cyan/5 p-3">
+            <div className="rounded-panel border border-cyan/20 bg-cyan/5 p-3">
               <p className="text-sm text-slate-200">
                 Variar <b>{axisField?.label_es ?? resolvedAxisTarget}</b> de <span className="font-mono">{start}</span> a <span className="font-mono">{stop}</span> en {steps} puntos.
               </p>
               <p className="mt-1 text-xs text-slate-500">Dibujar {curveMetricLabel(resolvedMetric)} · {repeats} repetición{repeats === 1 ? '' : 'es'}.</p>
             </div>
-            <details className="group rounded-xl border border-border bg-background/35 p-3">
+            <details className="group rounded-panel border border-border bg-background/35 p-3">
               <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-white">Personalizar rango, métrica y series</summary>
               <div className="mt-4 space-y-4 border-t border-border pt-4">
             <SelectField label="Receta guiada" onChange={(value) => applyRecipe(value as CurveRecipeId)} options={availableRecipes.map((recipe) => ({ value: recipe.id, label: recipe.label }))} value={recipeId} />
@@ -429,7 +437,17 @@ export function CurvesView({
               <Button className="flex-1" disabled={sweepMutation.isPending || validation.length > 0 || !recipeApplicability.applicable || Boolean(activeSweep && runningStates.has(activeSweep.status?.status ?? 'queued'))} onClick={() => sweepMutation.mutate()} tone="primary" type="button"><Play aria-hidden="true" size={15} /> Generar curva · {steps} puntos</Button>
               <Button disabled={!activeSweep || !runningStates.has(activeSweep.status?.status ?? 'queued')} onClick={() => cancel.mutate()} tone="warning" type="button"><Square aria-hidden="true" size={14} /> Cancelar</Button>
             </div>
-            {status ? <div aria-live="polite"><div className="flex justify-between text-xs text-slate-400"><span>{statusLabel(status.status)}</span><span>{status.progress.done}/{status.progress.total}</span></div><div className="mt-2 h-1.5 bg-background" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPercent)}><div className="h-full bg-cyan" style={{ width: `${progressPercent}%` }} /></div></div> : null}
+            {status ? (
+              <div aria-live="polite" className="rounded-control border border-cyan/25 bg-cyan/[0.04] px-3 py-2.5">
+                <div className="flex justify-between text-xs">
+                  <span className="font-medium text-cyan">{statusLabel(status.status)}</span>
+                  <span className="font-mono tabular-nums text-slate-400">{status.progress.done}/{status.progress.total}</span>
+                </div>
+                <div aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(progressPercent)} className="mt-2 h-1.5 overflow-hidden rounded-full bg-background" role="progressbar">
+                  <div className="h-full rounded-full bg-gradient-to-r from-cyan/70 to-cyan transition-[width] duration-300 ease-emphasis" style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
+            ) : null}
             {sweepMutation.error && !isAbortError(sweepMutation.error) ? <ApiErrorSummary error={sweepMutation.error} /> : null}
             {estimate.error instanceof Error ? <ApiErrorSummary error={estimate.error} /> : null}
             {resumeError ? <ApiErrorSummary error={resumeError} /> : null}
@@ -464,7 +482,7 @@ export function CurvesView({
   )
 }
 
-const inputClass = 'mt-1 h-9 w-full rounded-control border border-border bg-background px-3 font-mono text-xs text-white focus:border-cyan disabled:opacity-40'
+const inputClass = 'mt-1 h-9 w-full rounded-control border border-border bg-background px-3 font-mono text-xs text-white transition-colors hover:border-border-strong focus:border-cyan disabled:cursor-not-allowed disabled:opacity-40'
 const runningStates = new Set<JobStatus['status']>(['queued', 'running', 'cancellation_requested'])
 
 function SelectField({ label, options, value, onChange }: { label: string; options: Array<{ value: string; label: string }>; value: string; onChange: (value: string) => void }) {

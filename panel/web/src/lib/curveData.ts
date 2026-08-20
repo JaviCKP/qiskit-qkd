@@ -1,4 +1,5 @@
 import type { JsonObject } from '@/api/client'
+import { seriesStyle } from '@/lib/palette'
 
 export type CurvePoint = readonly [number, number]
 
@@ -73,9 +74,8 @@ export function curveTraces(
     groups.set(group, [...(groups.get(group) ?? []), row])
   }
 
-  const colors = ['#22d3ee', '#34d399', '#fbbf24', '#8b5cf6', '#f87171', '#e5e7eb']
   return Array.from(groups.entries()).flatMap(([name, groupRows], index) => {
-    const color = colors[index % colors.length]
+    const { color, dash } = seriesStyle(index)
     const meanKey = `${metric}_mean`
     const p05Key = `${metric}_p05`
     const p95Key = `${metric}_p95`
@@ -89,7 +89,7 @@ export function curveTraces(
       name,
       type: 'scatter',
       marker: { color },
-      line: { color },
+      line: dash ? { color, dash } : { color },
     }
     if (!(p05Key in (groupRows[0] ?? {})) || !(p95Key in (groupRows[0] ?? {}))) {
       return [line]

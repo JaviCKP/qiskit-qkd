@@ -8,11 +8,11 @@ from qiskit_qkd import (
     DecoyIntensity,
     DetectorConfig,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
     SourceConfig,
     decoy_rows_from_result,
 )
+from qiskit_qkd.backends import backend_from_scenario
 
 
 def main() -> None:
@@ -45,14 +45,11 @@ def main() -> None:
         post_processing=PostProcessingConfig(qber_abort_threshold=None),
     )
 
-    result = BB84Protocol().run(
-        scenario,
-        backend=QiskitSamplerBackend(
-            seed=scenario.seed,
-            max_circuits_per_job=512,
-            max_recorded_results=0,
-        ),
-    )
+    backend = backend_from_scenario(scenario)
+    # Keep the example's bounded-output settings without bypassing resolution.
+    backend.max_circuits_per_job = 512
+    backend.max_recorded_results = 0
+    result = BB84Protocol().run(scenario, backend=backend)
 
     print("BB84 decoy-state source comparison")
     print(

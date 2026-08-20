@@ -29,9 +29,10 @@ Phase 4 extends this layer with `AerNoiseModelAdapter` and
 `TranspilationOptions`. BB84 circuits include an explicit `id` instruction as a
 channel marker between Alice's preparation and Bob's basis change. Aer
 depolarizing and phase-damping errors attach to that marker; Aer readout error
-attaches to measurement. Source preparation errors are sampled as logical BB84
-preparation flips, while coherent channel misalignment appears as explicit
-`ry`/`rz` gates. The backend records Qiskit/Aer versions, seeds, transpilation
+attaches to measurement. Source preparation errors are sampled once before
+Eve and channel processing and carried by `PreparedState`, while coherent
+channel misalignment appears as explicit `ry`/`rz` gates. The backend records
+Qiskit/Aer versions, seeds, transpilation
 options, primitive names, counts, and a compact noise summary. These fields,
 together with the requested-scenario digest and the effective model snapshot,
 are required context for reproducibility; the scenario seed alone is not a
@@ -41,6 +42,30 @@ BB84 now calls this backend only for pulses that were emitted by the source,
 kept at least one surviving photon after channel loss, and were assigned to a
 valid Bob timing gate. No circuit is executed for a source miss, a lost photon,
 an out-of-window signal, or a pure dark-count/background event.
+
+### Prepared state and attack order
+
+BB84 keeps the logical value Alice records separate from the physical state
+that enters the optical path. For each attempted slot, `PreparedState` samples
+the source preparation error once and stores both `alice_bit` and
+`prepared_bit`. The physical order is therefore:
+
+```text
+logical Alice bit -> preparation error -> PreparedState.prepared_bit
+  -> Eve (at attack_position) -> channel segment -> Bob
+```
+
+PDL and other state-dependent channel calculations use the physical
+`prepared_bit`, not the logical bit Alice keeps for sifting. This prevents a
+preparation error from being sampled again after an Eve operation.
+
+`EveConfig.attack_position` is a discrete model choice. The default
+`post_loss` position is pedagogical: channel survival and timing are sampled
+first, then Eve acts only on a surviving, timing-valid signal opportunity.
+`pre_loss` runs Eve after source preparation but before channel survival, so a
+PNS model can act on the emitted photon number before loss. It is not a
+composable arbitrary two-segment channel model; the implementation exposes a
+single pre- or post-loss seam.
 
 ## QKD Event Layer
 
@@ -84,8 +109,9 @@ scenario execution or security semantics.
 Phase 4 adds the detectable quantum-state noise path without changing the
 classical post-processing layer:
 
-1. `QiskitSamplerBackend` reads source preparation-error probability and
-   channel polarization rotations from the scenario.
+1. `BB84Protocol` samples the source preparation error into `PreparedState`;
+   `QiskitSamplerBackend` reads the channel polarization rotations and retains
+   preparation-error sampling only for its legacy direct-measurement API.
 2. `AerNoiseModelAdapter.from_scenario()` reads channel depolarizing and phase
    damping probabilities plus detector readout error.
 3. The adapter creates a compact Aer `NoiseModel` for the BB84 channel marker
@@ -96,6 +122,13 @@ classical post-processing layer:
    records `optimization_level` and `seed_transpiler`.
 6. `QiskitSamplerBackend` switches to Aer `SamplerV2` when a noise model is
    supplied and records the resulting provenance.
+
+`backend_from_scenario(scenario)` is the canonical backend constructor used by
+protocol runners. It builds the ideal or Aer-backed sampler, passes the Aer
+`NoiseModel` when channel/readout noise is configured, applies scenario seeds,
+and lets the backend apply the requested transpilation options. Supplying a
+custom backend remains possible, but its Aer/no-Aer boundary must match the
+scenario; callers should not recreate this wiring independently in scripts.
 
 This phase deliberately does not implement Eve, decoy BB84, E91, dashboards,
 CLI commands, or temporal channel characterization. Phase 4.1 adds the
@@ -140,8 +173,9 @@ Phase 5 adds an explicit adversarial layer for BB84:
 
 1. `EveConfig` stores the configured adversary on `Scenario`.
 2. `eve_from_config()` builds either `NoEve` or `InterceptResendEve`.
-3. BB84 invokes Eve only for emitted signal rounds with
-   `surviving_photon_number > 0` and a valid timing-gate assignment.
+3. BB84 invokes Eve according to `EveConfig.attack_position`: `post_loss`
+   requires an emitted, surviving signal with a valid timing-gate assignment;
+   `pre_loss` invokes Eve after source preparation and before channel survival.
 4. If Eve intercepts, she measures in a random BB84 basis and resends her
    measured bit in that basis before Bob measures.
 5. Event records store `eve_action`, `eve_basis`, `eve_detectable`, and
@@ -191,8 +225,8 @@ architecture:
 2. `channels.impairments` owns the formulas. It computes temporal broadening,
    effective timing jitter, state-dependent PDL transmittance, Raman count
    rate, and effective background rate.
-3. `prepare_physical_round()` receives Alice's bit and basis so PDL can affect
-   photon survival before the Qiskit circuit path.
+3. `prepare_physical_round()` receives the physical `PreparedState.prepared_bit`
+   and basis so PDL can affect photon survival before the Qiskit circuit path.
 4. PMD and chromatic dispersion increase the timing-layer jitter used by
    `assign_timing()`, creating concrete `early`/`late` timing discards.
 5. Raman crosstalk is added to the optical background rate passed to
@@ -222,7 +256,9 @@ retains `security` in field and function names):
    `PostProcessingConfig.decoy_security_estimation_enabled` is true.
 4. `PhotonNumberSplittingEve` models an idealized QND photon-number attack:
    multi-photon pulses can be split without changing the BB84 state, while
-   single-photon pulses can optionally be blocked to mimic channel loss.
+   single-photon pulses can optionally be blocked to mimic channel loss. With
+   `pre_loss`, the attack sees the emitted photon number; with `post_loss`, it
+   only sees photons that survived the channel.
 5. PNS tags are stored on events, but PNS is not represented as accidental
    channel noise or an Aer `NoiseModel` component.
 6. `analysis.decoy_rows_from_result()` converts the nested decoy summary into
@@ -266,7 +302,8 @@ original slot.
 
 The first E91 implementation models one explicit quantum channel arm toward
 Bob and keeps Alice local to the source. This is intentionally compact and
-auditable. Dual-arm asymmetric links, SPDC multi-pair emission, loophole-free
+auditable. Dual-arm asymmetric links, full SPDC quantum multi-pair state
+emission, loophole-free
 Bell analysis, quantum PDL/loss channels for entangled states, and
 device-independent finite-key analysis remain future work. In particular,
 `S > 2` is evaluated on detected coincidences under a fair-sampling
@@ -373,14 +410,31 @@ fields remain serialized for compatibility. In particular:
 Provenance separates requested configuration from execution. The scenario and
 its digest preserve intent; `provenance.effective_model` records the source,
 channel, detector, protocol, and parameter applicability actually used. Backend,
-primitive, library, Qiskit/Aer versions and all relevant execution
-seeds complete the reproducibility record. Consumers should compare the
-requested digest, effective snapshot, and execution metadata, not only the
-central seed. The effective snapshot identifies consumed/ignored parameter
-names and concrete models; parameter values remain in the normalized scenario.
-The current schema does not include a VCS/implementation digest or Python
-runtime version, so those must be archived separately for long-term exact
-reproduction.
+primitive, library, Qiskit/Aer versions and all relevant execution seeds
+complete the reproducibility record. New results also carry Python/runtime
+metadata, VCS `commit` plus confidence/source and dirty state, and an
+`implementation_hash` when available. Consumers should compare the requested
+digest, effective snapshot, and execution metadata, not only the central seed.
+An unavailable commit is represented as `unknown`; loading an archive never
+substitutes the reader's current runtime or invents historical provenance.
+
+For one result, `analysis.extract_authoritative_metrics(result)` is the stable
+public interpretation boundary. It derives nullable QBER, threshold decision
+and evidence origin, rate applicability/status, and verification state from the
+assessment rather than trusting legacy `metrics.qber`/`metrics.abort` fields.
+`observed_metric_rows_from_results` is the Alice/Bob-facing view; the internal
+diagnostic view may include Eve traces, but Eve's actual information is not
+available to Alice or Bob. The panel exposes those diagnostics only after an
+explicit opt-in.
+
+Repeated sweep summaries expose uncertainty without changing security scope.
+Wilson score intervals (default level 0.95) are used for pooled binomial
+proportions such as QBER, gain, and tri-state decisions; two-sided Student-t
+intervals are used for means across independent repeats. An undefined interval
+is serialized as `bounds=[null, null]` when its denominator is zero or there is
+only one repeat. `p05`/`p95` remain descriptive empirical percentiles and must
+not be read as confidence bounds. These intervals describe Monte Carlo
+sampling, not finite-key or composable security.
 
 ## Data Flow
 
@@ -388,10 +442,12 @@ reproduction.
    central seed.
 2. For temporal studies, `ParameterResolver` creates an effective immutable
    scenario at the requested `time_s`.
-3. `BB84Protocol` samples Alice bits and bases, Bob bases, source emission,
-   channel photon survival, and timing jitter from that seed.
-4. If configured, Eve acts on surviving, timing-valid signal rounds before
-   Bob's quantum measurement.
+3. `BB84Protocol` samples Alice's logical bit and basis, then creates a
+   `PreparedState` by applying the preparation error once. The source emission,
+   Eve position, channel photon survival, and timing jitter follow from that
+   state and seed.
+4. Eve acts at the configured discrete position: `post_loss` after channel
+   survival/timing, or `pre_loss` before channel survival.
 5. `CircuitFactory` builds one BB84 circuit per surviving timing-valid signal
    opportunity, using Eve's resent state when an attack occurred. Multi-photon
    pulses are represented in the event layer by `surviving_photon_number`; the

@@ -55,22 +55,40 @@ The initial config objects are intentionally small:
   probability, coherent polarization rotations, optical background rate,
   PMD/CD parameters, PDL parameters, and Raman crosstalk parameters.
 - `DetectorConfig`: detector kind, efficiency, `dark_count_rate_hz`,
-  `gate_width_s`, `dead_time_s`, `afterpulse_probability`, readout error
-  probability, and double-click policy.
+  `gate_width_s`, `dead_time_s`, `afterpulse_probability`, optional
+  `afterpulse_tau_s`, readout error probability, and double-click policy.
 - `TimingConfig`: propagation delay, jitter, Bob clock offset/drift, and slot
   assignment policy.
 - `PostProcessingConfig`: sifting flag, QBER abort threshold, error correction
   efficiency, QBER sample fraction, reconciliation block size, privacy
   amplification flag, and legacy-named decoy diagnostic-estimator controls.
-- `EveConfig`: adversarial model kind, intercept probability, and PNS split
-  or single-photon blocking probabilities.
+- `EveConfig`: adversarial model kind, intercept probability, PNS split or
+  single-photon blocking probabilities, and discrete `attack_position`.
 - `E91Config`: Bell state, Alice/Bob angular settings, key setting pairs, CHSH
-  terms, Bob key-bit flip, and CHSH estimation switch.
+  terms, Bob key-bit flip, CHSH estimation switch, optional independent
+  `alice_detector`/`bob_detector` overrides, and effective pair-emission
+  controls (`pair_emission_model`, `pair_mean`).
 - `DynamicConfig` and `ParameterSchedule`: optional Phase 4.1 schedules that
   bind validated `section.field` targets to finite time profiles.
 
 Values are checked at construction time. Probabilities must be in `[0, 1]`,
 rates and distances must be non-negative, and time windows must be positive.
+
+## Prepared BB84 State
+
+`PreparedState` is the per-pulse boundary between Alice's logical record and
+the physical state sent into the protocol. It stores `alice_bit` and
+`alice_basis`, the physical `prepared_bit`, and flags describing whether the
+preparation error was sampled/applied. The protocol constructs it once in the
+order
+
+```text
+logical bit -> preparation error -> physical prepared_bit -> Eve -> channel -> Bob
+```
+
+Eve adapters and PDL receive the physical bit. Alice's logical bit remains the
+value used by sifting and error comparison, so the backend does not sample a
+second preparation error after an attack.
 
 `ChannelConfig` fiber impairment fields are scalar and JSON-safe:
 
@@ -80,6 +98,18 @@ rates and distances must be non-negative, and time windows must be positive.
   derive state-dependent survival probability.
 - `classical_channel_power_mw`, `raman_coefficient_hz_mw_km`, and
   `raman_filter_isolation_db` derive Raman background count rate.
+
+`source_spectral_width_nm` describes the optical source, although it remains
+under `ChannelConfig` for wire-format and digest compatibility. The effective
+model records its use; moving it to `SourceConfig` is a future migration, not a
+reinterpretation of historical scenarios.
+
+`DetectorConfig(kind="ideal")` and `kind="threshold"` resolve to the same
+threshold detector. The ideal label only describes a physically ideal setup
+when efficiency is `1.0` and all dark/background, dead-time, afterpulse, and
+readout-error parameters are zero. If `afterpulse_tau_s` is set, the previous
+firing contributes `p0*exp(-Δt/τ)`; `None` preserves the legacy constant
+per-gate probability.
 
 `ChannelConfig` non-fiber optical fields are also scalar and JSON-safe:
 
@@ -144,9 +174,12 @@ returns Matplotlib figures only when the optional `plot` extra is installed.
 
 Eve is configured separately from source, channel, detector, and Aer noise. The
 default `EveConfig(kind="none")` leaves BB84 unchanged. With
-`kind="intercept_resend"`, Eve can intercept each surviving signal with a
-configured probability, measure in a random BB84 basis, and resend her measured
-state to Bob.
+`kind="intercept_resend"`, Eve can intercept a signal with a configured
+probability, measure in a random BB84 basis, and resend her measured state to
+Bob. `attack_position="post_loss"` (the default) acts after channel survival
+and timing; `attack_position="pre_loss"` acts after `PreparedState` creation
+but before channel survival. The position is a discrete pedagogical seam, not
+a composable two-segment channel.
 
 Event records use the existing Eve fields for traceability:
 
@@ -164,9 +197,10 @@ diagnostics and are not inputs to sifting or reconciliation.
 
 Decoy-state BB84 is configured at the source layer. With
 `SourceConfig(kind="weak_coherent", decoy_intensities=...)`, each attempted slot
-selects one `DecoyIntensity` and samples a Poisson photon number. The channel
-then samples `surviving_photon_number`, while `transmitted` remains the boolean
-summary `surviving_photon_number > 0`. Event records store the selected
+selects one `DecoyIntensity` and samples a Poisson photon number. Depending on
+`attack_position`, Eve acts before or after the channel samples
+`surviving_photon_number`; `transmitted` remains the boolean summary
+`surviving_photon_number > 0`. Event records store the selected
 `intensity_class`, sampled `photon_number`, and surviving photon count; those
 fields flow through timing, detection, sifting, Eve traces, and result
 serialization without changing the classical BB84 API.
@@ -268,10 +302,18 @@ and measurement RNG seeds, and, when applicable, `primitive_seed`,
 `seed_simulator`, and `seed_transpiler`. They must not be collapsed into one
 generic seed because different execution paths consume them differently.
 
-The current provenance schema does not record the VCS commit/implementation
-digest or Python runtime version. A publication-grade reproduction bundle
-should therefore archive those alongside the serialized result and dependency
-lock.
+Runtime provenance now records Python/runtime and Qiskit/Aer versions, VCS
+`commit`, dirty state, confidence/source, and an `implementation_hash` when
+available. A publication-grade bundle should still preserve the manifest/CSV
+artifact and dependency lock; a missing commit is explicitly `unknown` rather
+than inferred from the loader.
+
+For public interpretation, `analysis.extract_authoritative_metrics` derives
+nullable QBER, threshold decision, rate applicability/status, and verification
+from evidence-backed assessment fields. `observed_metric_rows_from_results`
+removes `eve_*` fields for Alice/Bob-facing exports. Internal Eve traces are
+simulator diagnostics only; the actual Eve information is not protocol data,
+and the panel's diagnostic view is opt-in.
 
 ## JSON
 

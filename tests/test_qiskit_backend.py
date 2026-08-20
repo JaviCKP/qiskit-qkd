@@ -4,8 +4,8 @@ import pytest
 from qiskit import QuantumCircuit
 from qiskit.primitives import StatevectorSampler
 
-from qiskit_qkd import Scenario, SimulationResult
-from qiskit_qkd.backends import QiskitSamplerBackend
+from qiskit_qkd import ChannelConfig, Scenario, SimulationResult
+from qiskit_qkd.backends import QiskitSamplerBackend, backend_from_scenario
 from qiskit_qkd.protocols import BB84Protocol
 from qiskit_qkd.qiskit_integration import CircuitFactory
 
@@ -104,6 +104,63 @@ def test_bb84_result_exports_qiskit_execution_summary() -> None:
     assert payload["qiskit"]["circuit_metadata_sample"][0]["protocol"] == "BB84"
     assert "e91_noiseless_sampler" not in payload["qiskit"]
     assert SimulationResult.from_json(result.to_json()).qiskit == result.qiskit
+
+
+def test_scenario_aer_noise_rejects_explicit_ideal_backend() -> None:
+    scenario = Scenario(
+        pulses=4,
+        clock_rate_hz=1_000_000.0,
+        seed=17,
+        channel=ChannelConfig(depolarizing_probability=0.25),
+    )
+
+    with pytest.raises(ValueError, match="requires Qiskit Aer noise"):
+        BB84Protocol().run(scenario, backend=QiskitSamplerBackend(seed=17))
+
+
+def test_scenario_aer_noise_rejects_non_aer_explicit_sampler() -> None:
+    scenario = Scenario(
+        pulses=4,
+        clock_rate_hz=1_000_000.0,
+        seed=18,
+        channel=ChannelConfig(depolarizing_probability=0.25),
+    )
+    backend = QiskitSamplerBackend(
+        sampler=StatevectorSampler(seed=18),
+        noise_model=object(),
+    )
+
+    with pytest.raises(ValueError, match="non-Aer sampler"):
+        BB84Protocol().run(scenario, backend=backend)
+
+
+def test_scenario_factory_rejects_noisy_backend_for_silent_scenario() -> None:
+    class NoisyBackend:
+        noise_model = object()
+
+    scenario = Scenario(pulses=1, clock_rate_hz=1_000_000.0, seed=19)
+
+    with pytest.raises(ValueError, match="has no Aer quantum/readout noise"):
+        backend_from_scenario(scenario, backend=NoisyBackend())
+
+
+def test_scenario_factory_rejects_reusing_backend_for_new_aer_signature() -> None:
+    first = Scenario(
+        pulses=2,
+        clock_rate_hz=1_000_000.0,
+        seed=23,
+    )
+    second = Scenario(
+        pulses=2,
+        clock_rate_hz=1_000_000.0,
+        seed=23,
+        channel=ChannelConfig(depolarizing_probability=0.25),
+    )
+    backend = QiskitSamplerBackend(seed=23)
+    BB84Protocol().run(first, backend=backend)
+
+    with pytest.raises(ValueError, match="requires Qiskit Aer noise"):
+        BB84Protocol().run(second, backend=backend)
 
 
 def test_configuring_backend_for_new_scenario_resets_execution_summary() -> None:

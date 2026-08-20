@@ -38,7 +38,7 @@ const patternLabels: Record<TemporalPatternId, string> = {
 }
 
 const phenomenonOptions: Array<{ id: TemporalPhenomenon; label: string }> = [
-  { id: 'loss', label: 'Perdida' },
+  { id: 'loss', label: 'Pérdida' },
   { id: 'error', label: 'Error' },
   { id: 'alignment', label: 'Alineacion' },
   { id: 'background', label: 'Fondo' },
@@ -189,10 +189,10 @@ function scheduleLabel(target: string): string {
   const labels: Record<string, string> = {
     'channel.background_count_rate_hz': 'fondo del canal',
     'channel.depolarizing_probability': 'error de canal',
-    'channel.fixed_loss_db': 'perdida fija',
+    'channel.fixed_loss_db': 'pérdida fija',
     'channel.polarization_rotation_y_rad': 'alineacion',
     'eavesdropper.intercept_probability': 'interceptacion',
     'timing.clock_offset_s': 'offset de reloj',
   }
-  return labels[target] ?? 'parametro seleccionado'
+  return labels[target] ?? 'parámetro seleccionado'
 }

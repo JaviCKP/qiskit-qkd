@@ -36,7 +36,9 @@ Visualization is an analysis layer, not a new simulator path.
 ```python
 from qiskit_qkd.analysis import (
     add_derived_metrics,
+    extract_authoritative_metrics,
     metric_rows_from_results,
+    observed_metric_rows_from_results,
     secure_distance_limit,
     summarize_metric_rows,
 )
@@ -45,6 +47,15 @@ from qiskit_qkd.analysis import (
 `metric_rows_from_results(...)` flattens one or more `SimulationResult`
 objects into rows containing scenario labels, aggregate metrics, selected
 classical diagnostics, and derived metrics.
+
+`extract_authoritative_metrics(result)` is the single-result public extractor:
+it derives nullable QBER, threshold decision/evidence origin, rate
+applicability/status, and verification state from `assessment`. Use
+`observed_metric_rows_from_results(...)` for Alice/Bob-facing exports; it
+removes `eve_*` fields. `metric_rows_from_results(...)` remains the internal or
+compatibility view and may include simulator-only diagnostics. Eve's actual
+information is never protocol-visible, and the panel requires an explicit
+diagnostics opt-in to display those fields.
 
 `add_derived_metrics(...)` copies existing rows and adds useful ratios when the
 required counters are present:
@@ -73,12 +84,14 @@ of relabelling a rate or legacy boolean as formal security.
 
 `summarize_metric_rows(...)` aggregates repeated rows by one or more columns
 and reports population mean, standard deviation, min, max, p05, p95, and a
-finite-value count for each requested metric. It separates
-`legacy_abort_fraction` from `threshold_decision_fraction` and reports the
-number of available tri-state threshold decisions. These are descriptive
-Monte Carlo summaries, not confidence intervals or hypothesis tests. With one
-repetition, dispersion and percentile columns do not quantify uncertainty;
-use multiple independent seeds and report the per-metric finite count.
+finite-value count for each requested metric. It also adds Wilson score
+intervals (default 95%) for pooled binomial proportions and two-sided Student-t
+intervals for means across independent repeats. Zero denominators and fewer
+than two mean repeats are represented as `bounds=[null, null]`. The summary
+separates `legacy_abort_fraction` from `threshold_decision_fraction` and
+reports the number of available tri-state threshold decisions. `p05`/`p95`
+are empirical percentiles, not confidence bounds; these intervals describe
+Monte Carlo uncertainty and are not finite-key or composable-security claims.
 
 `secure_distance_limit(...)` is also a legacy API name. It returns the largest
 sampled distance only when the assessment reports an estimated key, an
@@ -200,5 +213,5 @@ do not pollute commits.
 ## Boundaries
 
 Phase 9 does not add dashboards, GUI state, notebook-only dependencies, CLI
-commands, finite-key intervals, or automatic report generation. Those can be
-layered on top of the same row and figure APIs later.
+commands, finite-key security intervals, or automatic report generation. The
+generic confidence intervals above are descriptive sweep statistics only.

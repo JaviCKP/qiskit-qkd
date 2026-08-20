@@ -77,6 +77,7 @@ E91_DEFAULT_ALICE_ANGLES_RAD = (0.0, math.pi / 2.0)
 E91_DEFAULT_BOB_ANGLES_RAD = (math.pi / 4.0, -math.pi / 4.0, 0.0)
 E91_DEFAULT_KEY_SETTING_PAIRS = ((0, 2),)
 E91_DEFAULT_CHSH_TERMS = ((0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, -1))
+E91_PAIR_EMISSION_MODELS = {"bernoulli", "poisson"}
 PROBABILITY_SUM_TOLERANCE = 1e-12
 
 
@@ -659,7 +660,18 @@ class ChannelConfig:
 
 @dataclass(frozen=True, slots=True)
 class DetectorConfig:
-    """Detector configuration with timing, efficiency, and readout parameters."""
+    """Detector configuration with timing, efficiency, and readout parameters.
+
+    ``kind="ideal"`` selects the same threshold-detector implementation as
+    ``kind="threshold"``.  It is physically ideal only when efficiency is one
+    and all noise/error parameters are zero; the name is retained as a useful
+    pedagogical alias and does not silently remove configured noise.
+
+    ``afterpulse_probability`` is the probability immediately after a prior
+    click.  When ``afterpulse_tau_s`` is set, the probability decays as
+    ``p0 * exp(-delta_t / afterpulse_tau_s)`` using the previous detector
+    firing timestamp; ``None`` preserves the historical per-gate probability.
+    """
 
     kind: str = "ideal"
     efficiency: float = 1.0
@@ -667,6 +679,7 @@ class DetectorConfig:
     gate_width_s: float = 1e-9
     dead_time_s: float = 0.0
     afterpulse_probability: float = 0.0
+    afterpulse_tau_s: float | None = None
     readout_error_probability: float = 0.0
     double_click_policy: str = "discard"
 
@@ -708,6 +721,11 @@ class DetectorConfig:
                 self.afterpulse_probability,
             ),
         )
+        if self.afterpulse_tau_s is not None:
+            tau = require_finite_number("afterpulse_tau_s", self.afterpulse_tau_s)
+            if tau <= 0.0:
+                raise ValueError("afterpulse_tau_s must be positive or None")
+            object.__setattr__(self, "afterpulse_tau_s", tau)
         object.__setattr__(
             self,
             "readout_error_probability",
@@ -725,7 +743,7 @@ class DetectorConfig:
             raise ValueError("double_click_policy must be discard, random, or error")
 
     def to_dict(self) -> JSONObject:
-        return {
+        payload: JSONObject = {
             "kind": self.kind,
             "efficiency": self.efficiency,
             "dark_count_rate_hz": self.dark_count_rate_hz,
@@ -735,6 +753,11 @@ class DetectorConfig:
             "readout_error_probability": self.readout_error_probability,
             "double_click_policy": self.double_click_policy,
         }
+        # Omit the optional field when unset so v1/v2 legacy payloads and
+        # canonical digests remain byte-for-byte stable by default.
+        if self.afterpulse_tau_s is not None:
+            payload["afterpulse_tau_s"] = self.afterpulse_tau_s
+        return payload
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
@@ -748,6 +771,7 @@ class DetectorConfig:
                 "gate_width_s",
                 "dead_time_s",
                 "afterpulse_probability",
+                "afterpulse_tau_s",
                 "readout_error_probability",
                 "double_click_policy",
             },
@@ -759,6 +783,7 @@ class DetectorConfig:
             gate_width_s=data.get("gate_width_s", 1e-9),
             dead_time_s=data.get("dead_time_s", 0.0),
             afterpulse_probability=data.get("afterpulse_probability", 0.0),
+            afterpulse_tau_s=data.get("afterpulse_tau_s"),
             readout_error_probability=data.get("readout_error_probability", 0.0),
             double_click_policy=data.get("double_click_policy", "discard"),
         )
@@ -972,6 +997,7 @@ class EveConfig:
     intercept_probability: float = 0.0
     pns_split_probability: float = 1.0
     pns_block_single_photon_probability: float = 0.0
+    attack_position: str = "post_loss"
 
     def __post_init__(self) -> None:
         kind = require_non_empty_str("kind", self.kind).lower()
@@ -991,6 +1017,21 @@ class EveConfig:
         # "no_eve" and "pns" are accepted aliases normalized above so that
         # equivalent configurations share one canonical serialized form.
         object.__setattr__(self, "kind", kind)
+        position = require_non_empty_str(
+            "attack_position",
+            self.attack_position,
+        ).lower()
+        position_aliases = {
+            "post-loss": "post_loss",
+            "postloss": "post_loss",
+            "before_loss": "pre_loss",
+            "pre-loss": "pre_loss",
+            "preloss": "pre_loss",
+        }
+        position = position_aliases.get(position, position)
+        if position not in {"post_loss", "pre_loss"}:
+            raise ValueError("attack_position must be post_loss or pre_loss")
+        object.__setattr__(self, "attack_position", position)
         object.__setattr__(
             self,
             "intercept_probability",
@@ -1017,7 +1058,7 @@ class EveConfig:
         )
 
     def to_dict(self) -> JSONObject:
-        return {
+        payload: JSONObject = {
             "kind": self.kind,
             "intercept_probability": self.intercept_probability,
             "pns_split_probability": self.pns_split_probability,
@@ -1025,6 +1066,11 @@ class EveConfig:
                 self.pns_block_single_photon_probability
             ),
         }
+        # Preserve schema-v1 payloads byte-for-byte for the default mode while
+        # serializing an explicitly selected physical attack position.
+        if self.attack_position != "post_loss":
+            payload["attack_position"] = self.attack_position
+        return payload
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
@@ -1036,6 +1082,7 @@ class EveConfig:
                 "intercept_probability",
                 "pns_split_probability",
                 "pns_block_single_photon_probability",
+                "attack_position",
             },
         )
         return cls(
@@ -1046,6 +1093,7 @@ class EveConfig:
                 "pns_block_single_photon_probability",
                 0.0,
             ),
+            attack_position=data.get("attack_position", "post_loss"),
         )
 
 
@@ -1181,7 +1229,15 @@ def _require_e91_indexes_in_range(
 
 @dataclass(frozen=True, slots=True)
 class E91Config:
-    """Entanglement-based E91 protocol configuration."""
+    """Entanglement-based E91 protocol configuration.
+
+    The optional detector overrides are intentionally scoped to E91.  A
+    missing override means that the scenario-level detector is used for that
+    arm, preserving the historical single-detector configuration.  Pair
+    emission fields are additive and default to the existing one-pair
+    Bernoulli model; they provide a stable configuration seam for a future
+    Poisson/SPDC multi-pair source without changing current payloads.
+    """
 
     bell_state: str = "psi_minus"
     alice_angles_rad: tuple[float, ...] = E91_DEFAULT_ALICE_ANGLES_RAD
@@ -1190,6 +1246,10 @@ class E91Config:
     chsh_terms: tuple[tuple[int, int, int], ...] = E91_DEFAULT_CHSH_TERMS
     bob_key_bit_flip: bool = True
     chsh_estimation_enabled: bool = True
+    alice_detector: DetectorConfig | None = None
+    bob_detector: DetectorConfig | None = None
+    pair_emission_model: str = "bernoulli"
+    pair_mean: float | None = None
 
     def __post_init__(self) -> None:
         bell_state = require_non_empty_str("bell_state", self.bell_state).lower()
@@ -1228,6 +1288,35 @@ class E91Config:
             "chsh_estimation_enabled",
             require_bool("chsh_estimation_enabled", self.chsh_estimation_enabled),
         )
+        for name in ("alice_detector", "bob_detector"):
+            detector = getattr(self, name)
+            if detector is not None and not isinstance(detector, DetectorConfig):
+                if isinstance(detector, Mapping):
+                    detector = DetectorConfig.from_dict(detector)
+                else:
+                    raise TypeError(f"{name} must be a DetectorConfig or None")
+                object.__setattr__(self, name, detector)
+        model = require_non_empty_str(
+            "pair_emission_model",
+            self.pair_emission_model,
+        ).lower()
+        aliases = {
+            "single_pair": "bernoulli",
+            "single": "bernoulli",
+            "multi_pair": "poisson",
+        }
+        model = aliases.get(model, model)
+        object.__setattr__(
+            self,
+            "pair_emission_model",
+            require_choice("pair_emission_model", model, E91_PAIR_EMISSION_MODELS),
+        )
+        if self.pair_mean is not None:
+            object.__setattr__(
+                self,
+                "pair_mean",
+                require_non_negative_number("pair_mean", self.pair_mean),
+            )
 
     @property
     def classical_bound(self) -> float:
@@ -1236,7 +1325,7 @@ class E91Config:
         return 2.0
 
     def to_dict(self) -> JSONObject:
-        return {
+        payload: JSONObject = {
             "bell_state": self.bell_state,
             "alice_angles_rad": list(self.alice_angles_rad),
             "bob_angles_rad": list(self.bob_angles_rad),
@@ -1245,6 +1334,18 @@ class E91Config:
             "bob_key_bit_flip": self.bob_key_bit_flip,
             "chsh_estimation_enabled": self.chsh_estimation_enabled,
         }
+        # New E91 knobs are omitted at defaults to preserve historical
+        # serialization and canonical digests.  Explicit detector overrides
+        # are serialized as nested validated detector configurations.
+        if self.alice_detector is not None:
+            payload["alice_detector"] = self.alice_detector.to_dict()
+        if self.bob_detector is not None:
+            payload["bob_detector"] = self.bob_detector.to_dict()
+        if self.pair_emission_model != "bernoulli":
+            payload["pair_emission_model"] = self.pair_emission_model
+        if self.pair_mean is not None:
+            payload["pair_mean"] = self.pair_mean
+        return payload
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
@@ -1259,6 +1360,10 @@ class E91Config:
                 "chsh_terms",
                 "bob_key_bit_flip",
                 "chsh_estimation_enabled",
+                "alice_detector",
+                "bob_detector",
+                "pair_emission_model",
+                "pair_mean",
             },
         )
         return cls(
@@ -1275,7 +1380,29 @@ class E91Config:
             chsh_terms=tuple(data.get("chsh_terms", E91_DEFAULT_CHSH_TERMS)),
             bob_key_bit_flip=data.get("bob_key_bit_flip", True),
             chsh_estimation_enabled=data.get("chsh_estimation_enabled", True),
+            alice_detector=(
+                DetectorConfig.from_dict(data["alice_detector"])
+                if data.get("alice_detector") is not None
+                else None
+            ),
+            bob_detector=(
+                DetectorConfig.from_dict(data["bob_detector"])
+                if data.get("bob_detector") is not None
+                else None
+            ),
+            pair_emission_model=data.get("pair_emission_model", "bernoulli"),
+            pair_mean=data.get("pair_mean"),
         )
+
+    def detector_for_alice(self, default: DetectorConfig) -> DetectorConfig:
+        """Return Alice's E91 detector override or the scenario detector."""
+
+        return self.alice_detector or default
+
+    def detector_for_bob(self, default: DetectorConfig) -> DetectorConfig:
+        """Return Bob's E91 detector override or the scenario detector."""
+
+        return self.bob_detector or default
 
 
 @dataclass(frozen=True, slots=True)

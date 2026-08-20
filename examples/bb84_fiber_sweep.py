@@ -7,10 +7,10 @@ from qiskit_qkd import (
     ChannelConfig,
     DetectorConfig,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
 )
 from qiskit_qkd.analysis import sweep_bb84_distance
+from qiskit_qkd.backends import backend_from_scenario
 
 
 def main() -> None:
@@ -41,11 +41,7 @@ def main() -> None:
         BB84Protocol(),
         scenario,
         [0, 10, 25, 50, 75, 100],
-        backend_factory=lambda run_scenario: QiskitSamplerBackend(
-            seed=run_scenario.seed,
-            max_circuits_per_job=512,
-            max_recorded_results=0,
-        ),
+        backend_factory=lambda run_scenario: _backend_for_scenario(run_scenario),
     )
 
     print("BB84 fiber sweep")
@@ -63,6 +59,12 @@ def main() -> None:
             f"{row['qber']:8.4f} "
             f"{row['secret_key_rate_bps']:12.2f}",
         )
+
+def _backend_for_scenario(scenario: Scenario):
+    backend = backend_from_scenario(scenario)
+    backend.max_circuits_per_job = 512
+    backend.max_recorded_results = 0
+    return backend
 
 
 if __name__ == "__main__":

@@ -105,27 +105,39 @@ function localizeScientificText(value: string): string {
 }
 
 export function resultPresentation(summary: JsonObject): ResultPresentation {
-  const assessmentRecord = isRecord(summary.assessment) ? summary.assessment : null
+  // Prefer the explicit backend extractor.  ``metrics.qber`` and
+  // ``metrics.abort`` are retained for schema compatibility but can be a
+  // legacy aggregate (for example zero when the QBER denominator is empty).
+  // The authoritative assessment is the source of truth for UI decisions.
+  const authoritative = isRecord(summary.authoritative_metrics)
+    ? summary.authoritative_metrics
+    : null
+  const assessmentRecord = authoritative && isRecord(authoritative.assessment)
+    ? authoritative.assessment
+    : isRecord(summary.assessment)
+      ? summary.assessment
+      : null
   const assessment = assessmentRecord as ResultAssessment | null
   const metrics = isRecord(summary.metrics) ? summary.metrics : summary
+  const evidenceMetrics = authoritative ?? metrics
   const classical = isRecord(summary.classical) ? summary.classical : {}
   const rateEstimateStatus = assessmentRecord
     ? stringValue(assessmentRecord.rate_estimate_status)
-    : finiteNumber(metrics.secret_key_rate_bps) === null
+    : finiteNumber(evidenceMetrics.secret_key_rate_bps) === null
       ? 'unavailable'
       : 'available'
 
   const sampleSize = assessmentRecord
     ? nonNegativeCount(assessmentRecord.sample_size)
-    : nonNegativeCount(metrics.sifted)
+    : nonNegativeCount(evidenceMetrics.sifted)
   const assessmentQber = finiteNumber(assessmentRecord?.qber_value)
-  const legacyQber = finiteNumber(metrics.qber)
+  const legacyQber = finiteNumber(evidenceMetrics.qber) ?? finiteNumber(metrics.qber)
   const qberDefined = assessmentRecord
     ? assessmentRecord.qber_defined === true && sampleSize > 0 && assessmentQber !== null
     : sampleSize > 0 && legacyQber !== null
   const status = assessmentRecord
     ? statusFromAssessment(assessmentRecord)
-    : statusFromLegacy(metrics, classical, sampleSize)
+    : statusFromLegacy(evidenceMetrics, classical, sampleSize)
   const statusPresentation = STATUS_PRESENTATION[status]
 
   return {
@@ -140,7 +152,7 @@ export function resultPresentation(summary: JsonObject): ResultPresentation {
         rateEstimateStatus === 'inconsistent_with_key_status'
         ? finiteNumber(assessmentRecord.rate_estimate_bps)
         : null
-      : finiteNumber(metrics.secret_key_rate_bps),
+      : finiteNumber(evidenceMetrics.secret_key_rate_bps),
     rateEstimateStatus,
     rateEstimateMethod: stringValue(assessmentRecord?.rate_estimate_method),
     securityScope: stringValue(assessmentRecord?.security_scope),
@@ -151,7 +163,7 @@ export function resultPresentation(summary: JsonObject): ResultPresentation {
     assumptions: stringArray(assessmentRecord?.assumptions).map(localizeScientificText),
     observedChshS: assessmentRecord
       ? finiteNumber(assessmentRecord.observed_chsh_s)
-      : finiteNumber(metrics.chsh_s),
+      : finiteNumber(evidenceMetrics.chsh_s),
     chshSampleSize: assessmentRecord
       ? nonNegativeCount(assessmentRecord.chsh_sample_size)
       : null,

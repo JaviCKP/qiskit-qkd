@@ -21,6 +21,7 @@ scenario = Scenario(
     eavesdropper=EveConfig(
         kind="intercept_resend",
         intercept_probability=1.0,
+        attack_position="post_loss",
     ),
 )
 ```
@@ -29,24 +30,38 @@ Available models:
 
 - `EveConfig(kind="none")`: no adversary. This is the default.
 - `EveConfig(kind="intercept_resend", intercept_probability=p)`: Eve
-  intercepts each surviving signal round with probability `p`, measures in a
-  random BB84 basis, then resends the measured bit in that basis.
+  intercepts a signal opportunity with probability `p`, measures in a random
+  BB84 basis, then resends the measured bit in that basis.
 - `EveConfig(kind="photon_number_splitting", pns_split_probability=p)` or
   `kind="pns"`: Eve splits multi-photon weak-coherent pulses without changing
   the BB84 state. `pns_block_single_photon_probability` optionally blocks
   single-photon pulses to mimic lossy-link attacks.
 
+`attack_position` is a discrete choice with values `post_loss` (the default)
+and `pre_loss`. In the pedagogical default, channel survival and timing are
+sampled first; Eve then receives only a surviving, timing-valid signal. With
+`pre_loss`, Eve acts after source preparation but before channel survival, so a
+PNS attack can inspect the emitted photon number and choose how many photons to
+forward. This is one explicit placement seam, not an arbitrary composable
+two-segment channel model.
+
 `intercept_probability` is validated as a probability in `[0, 1]`. The attack
 uses the scenario RNG, so repeated runs with the same scenario and backend seed
 are reproducible.
 
+The protocol creates a `PreparedState` before invoking Eve. It records Alice's
+logical bit, the sampled preparation error, and the physical bit sent into the
+attack/channel path. Eve therefore receives the physical prepared bit; the
+logical bit is retained for sifting and diagnostics.
+
 ## Intercept-Resend Semantics
 
-For each emitted, transmitted, timing-valid signal round:
+For each signal round presented to Eve at the configured position:
 
 1. Eve samples whether to intercept.
 2. If she intercepts, she chooses one of the protocol bases.
-3. If Eve's basis equals Alice's basis, Eve measures Alice's bit exactly and
+3. If Eve's basis equals Alice's basis, Eve measures the physical prepared bit
+   exactly and
    resends the same bit and basis.
 4. If Eve's basis differs from Alice's basis, Eve obtains a random bit and
    resends that bit in the wrong basis.
@@ -57,11 +72,12 @@ produce about 25% QBER on sifted key bits under ideal lossless conditions.
 
 ## Photon-Number-Splitting Semantics
 
-For each emitted, transmitted, timing-valid signal round:
+For each signal round presented to Eve at the configured position:
 
 1. Eve receives simulator-side photon-number diagnostics.
-2. If the original pulse and the post-channel surviving signal are both
-   multi-photon, she keeps one surviving photon with probability
+2. In `post_loss`, the split branch requires the post-channel surviving count
+   to be multi-photon; in `pre_loss`, Eve can split the emitted multi-photon
+   pulse before the channel samples loss. She keeps one photon with probability
    `pns_split_probability`.
 3. She forwards the same BB84 state to Bob, so the split itself does not add
    basis errors.
@@ -74,9 +90,11 @@ Single-photon blocking is optional. It is useful for experiments where Eve
 tries to hide inside channel loss while preserving information from
 multi-photon pulses.
 
-The simulator never lets PNS create photons after channel loss. If a
-multi-photon pulse reaches the Eve layer with only one surviving photon, the
-split branch is skipped and Bob receives that one photon unchanged.
+In the default `post_loss` model, PNS never creates photons after channel loss:
+if only one photon survives, the split branch is skipped and Bob receives that
+one photon unchanged. Selecting `pre_loss` is the explicit stronger placement
+for experiments that need Eve to act before loss; it still does not introduce
+a general pair of independently configurable channel segments.
 
 ## Traceability
 

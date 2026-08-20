@@ -71,7 +71,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'ideal-baseline': recipe(
     'ideal-baseline',
     'Linea base ideal',
-    'Como cambia el error cuando solo aumentamos el numero de pulsos?',
+    '¿Cómo cambia el error cuando solo aumentamos el número de pulsos?',
     'qber',
     axis('scenario.pulses', 256, 8192, 8, 'log'),
     ['ideal'],
@@ -89,7 +89,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'qber-distance': recipe(
     'qber-distance',
     'Error frente a distancia',
-    'Como sube el QBER al alargar el enlace?',
+    '¿Cómo sube el QBER al alargar el enlace?',
     'qber',
     axis('channel.distance_km', 0, 120, 25, 'linear'),
     ['fiber', 'vacuum', 'air', 'satellite', 'underwater'],
@@ -98,7 +98,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'qber-dark-counts': recipe(
     'qber-dark-counts',
     'Ruido oscuro del detector',
-    'Cuanto error introducen los conteos oscuros?',
+    '¿Cuánto error introducen los conteos oscuros?',
     'qber',
     axis('detector.dark_count_rate_hz', 0, 1000, 21, 'linear'),
     allMedia,
@@ -147,7 +147,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'chsh-depolarization': recipe(
     'chsh-depolarization',
     'CHSH con despolarizacion',
-    'Como cambia el CHSH observado al aumentar el ruido?',
+    '¿Cómo cambia el CHSH observado al aumentar el ruido?',
     'chsh_s',
     axis('channel.depolarizing_probability', 0, 0.5, 21, 'linear'),
     ['ideal', 'vacuum', 'custom'],
@@ -177,7 +177,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'qber-atmosphere': recipe(
     'qber-atmosphere',
     'Extincion atmosferica',
-    'Como afecta la atmosfera al error observado?',
+    '¿Cómo afecta la atmósfera al error observado?',
     'qber',
     axis('channel.atmospheric_extinction_db_km', 0, 3, 21, 'linear'),
     ['air', 'satellite'],
@@ -234,7 +234,7 @@ const recipesById: Record<CurveRecipeId, CurveRecipe> = {
   'custom-axis': recipe(
     'custom-axis',
     'Eje personalizado',
-    'Elige el parametro de barrido desde el catalogo.',
+    'Elige el parámetro de barrido desde el catálogo.',
     'qber',
     axis('channel.distance_km', 0, 120, 25, 'linear'),
     allMedia,
@@ -540,13 +540,13 @@ function numbersDiffer(left: number, right: number): boolean {
 function humanTarget(target: string): string {
   switch (target) {
     case 'scenario.pulses':
-      return 'numero de pulsos'
+      return 'número de pulsos'
     case 'channel.distance_km':
       return 'distancia de fibra'
     case 'detector.dark_count_rate_hz':
       return 'conteos oscuros'
     case 'source.mean_photon_number':
-      return 'numero medio de fotones'
+      return 'número medio de fotones'
     case 'eavesdropper.intercept_probability':
       return 'probabilidad de interceptacion'
     case 'channel.depolarizing_probability':
@@ -554,9 +554,9 @@ function humanTarget(target: string): string {
     case 'channel.pointing_jitter_rad':
       return 'jitter de apuntamiento'
     case 'channel.atmospheric_extinction_db_km':
-      return 'extincion atmosferica'
+      return 'extinción atmosférica'
     case 'channel.underwater_extinction_m_inv':
-      return 'extincion bajo el agua'
+      return 'extinción bajo el agua'
     case 'timing.jitter_std_s':
       return 'jitter temporal'
     case 'time_s':

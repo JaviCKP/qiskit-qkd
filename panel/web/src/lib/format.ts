@@ -38,3 +38,11 @@ export function parseInputValue(value: string, type: string): unknown {
 export function metricRecord(summary: JsonObject): JsonObject {
   return isRecord(summary.metrics) ? summary.metrics : summary
 }
+
+/** Share as a percentage, with the precision the panel's charts use. */
+export function percent(ratio: number): string {
+  if (!Number.isFinite(ratio)) return '—'
+  const scaled = ratio * 100
+  if (scaled > 0 && scaled < 0.1) return '<0,1 %'
+  return `${scaled.toLocaleString('es-ES', { maximumFractionDigits: scaled < 10 ? 1 : 0 })} %`
+}

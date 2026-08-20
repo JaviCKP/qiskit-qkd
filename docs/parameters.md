@@ -63,6 +63,13 @@ duration_s = pulses / clock_rate_hz
 - `bob_key_bit_flip`: when true, Bob flips key bits for the singlet
   anticorrelation key pair.
 - `chsh_estimation_enabled`: when false, CHSH is not reported.
+- `alice_detector`, `bob_detector`: optional independent detector overrides;
+  when omitted, each arm receives a fresh detector built from the scenario
+  detector configuration.
+- `pair_emission_model`: `bernoulli` (legacy one-pair emission) or `poisson`
+  (alias `multi_pair`) for effective Poisson pair counts.
+- `pair_mean`: non-negative Poisson mean; if omitted, the source emission
+  probability is used as the effective mean.
 
 E91 assessment reports `observed_chsh_s`, `chsh_sample_size`,
 `chsh_sample_size_by_term`, and a nullable `observed_threshold_exceeded`.
@@ -71,8 +78,11 @@ The Bell summary also records `classical_bound=2.0` explicitly.
 the detected-coincidence sample is post-selected: no significance test or
 confidence interval is performed and no detection/locality loophole is closed.
 
-For E91, `SourceConfig(kind="entangled_pair")` emits one Bell pair when the
-source fires. `source.preparation_error_probability` is interpreted as Bell
+For E91, `SourceConfig(kind="entangled_pair")` uses one Bell-pair
+representative circuit per measurement opportunity. In `poisson` mode the
+event layer samples an effective pair count and exposes multipair diagnostics;
+the backend does not simulate an n-pair quantum state and this is not a
+security proof. `source.preparation_error_probability` is interpreted as Bell
 pair preparation imperfection: a sampled random Pauli error is applied to
 Bob's qubit before channel propagation.
 
@@ -176,24 +186,30 @@ parameters executed at a point.
   or `pns`. The aliases `no_eve` and `pns` normalize to `none` and
   `photon_number_splitting` so equivalent configurations serialize and digest
   identically.
-- `intercept_probability`: probability that Eve intercepts a surviving signal
-  round. This is meaningful for `intercept_resend` and must be in `[0, 1]`.
+- `intercept_probability`: probability that Eve intercepts a signal presented at
+  the configured `attack_position`. This is meaningful for `intercept_resend`
+  and must be in `[0, 1]`.
 - `pns_split_probability`: probability that PNS Eve splits a multi-photon
   pulse. Meaningful for `kind="photon_number_splitting"` or `kind="pns"`.
 - `pns_block_single_photon_probability`: probability that PNS Eve blocks a
   single-photon pulse to mimic loss.
+- `attack_position`: discrete Eve placement, either `post_loss` (default) or
+  `pre_loss`. `post_loss` samples channel survival and timing before Eve acts;
+  `pre_loss` invokes Eve after source preparation and before channel survival.
+  This is not a general composable two-segment channel model.
 
-The Phase 5 intercept-resend model acts only on emitted, transmitted,
-timing-valid signal rounds:
+The intercept-resend model acts at the configured attack position. In the
+default `post_loss` mode it acts only on emitted, transmitted, timing-valid
+signal rounds:
 
 ```text
 intercepted = rng.random() < intercept_probability
 eve_basis = random choice from protocol.basis_choices
 ```
 
-If `eve_basis == alice_basis`, Eve learns the bit exactly and resends the same
-BB84 state. If `eve_basis != alice_basis`, Eve obtains a random bit and resends
-that bit in her basis. Under ideal BB84 conditions and
+If `eve_basis == alice_basis`, Eve learns the physical prepared bit exactly and
+resends the same BB84 state. If `eve_basis != alice_basis`, Eve obtains a random
+bit and resends that bit in her basis. Under ideal BB84 conditions and
 `intercept_probability = 1`, this produces the familiar approximate 25% QBER
 on sifted bits.
 
@@ -209,8 +225,10 @@ photon_number == 1:
   optionally block with pns_block_single_photon_probability
 ```
 
-PNS does not add QBER by itself. Its signature is intensity-dependent gain and
-extra Eve information on multi-photon sifted events.
+In `post_loss`, the PNS branch sees surviving photons; in `pre_loss`, it sees
+the emitted photon number before channel survival. PNS does not add QBER by
+itself. Its signature is intensity-dependent gain and extra Eve information on
+multi-photon sifted events.
 
 Eve diagnostics are written to event fields and tags. Aggregate metrics report:
 
@@ -224,9 +242,11 @@ eve_information_estimate = sifted_bits_known_by_eve / sifted
 - `emission_probability`: probability that the source emits in a round.
 - `mean_photon_number`: mean photon number for weak coherent or decoy-style
   sources. It may be `0.0` for vacuum decoy classes.
-- `preparation_error_probability`: probability that the prepared logical BB84
-  bit is flipped before basis encoding. This models a pedagogical source-state
-  preparation error and is sampled only for emitted/transmitted signal rounds.
+- `preparation_error_probability`: probability that the source preparation
+  flips Alice's logical BB84 bit before basis encoding. The protocol samples
+  this once into `PreparedState` before Eve or channel processing; the physical
+  `prepared_bit` is then used by Eve and state-dependent channel effects, while
+  `alice_bit` remains the logical value used for sifting.
 - `decoy_intensities`: optional tuple of `DecoyIntensity` rows used by the
   weak-coherent family (`kind="weak_coherent"` or
   `kind="decoy_weak_coherent"`).
@@ -300,11 +320,16 @@ requested field.
 - `chromatic_dispersion_ps_nm_km`: chromatic dispersion coefficient in
   ps/(nm km). It may be negative; the broadening uses its absolute value.
 - `source_spectral_width_nm`: optical source spectral width used by the
-  first-order chromatic-dispersion model.
+  first-order chromatic-dispersion model. It is physically a source property,
+  but remains under `ChannelConfig` for wire-format/digest compatibility;
+  moving it to `SourceConfig` is a future migration.
 - `polarization_dependent_loss_db`: PDL difference in dB between the preferred
   and suppressed eigenstates.
 - `pdl_axis_basis`: BB84 basis (`Z` or `X`) defining the preferred PDL axis.
 - `pdl_axis_bit`: bit (`0` or `1`) defining the preferred state on that axis.
+  PDL evaluates the physical `PreparedState.prepared_bit`, so a source
+  preparation error can change which PDL branch is sampled; it does not use
+  Alice's logical `alice_bit`.
 - `classical_channel_power_mw`: co-propagating classical-channel power in mW.
 - `raman_coefficient_hz_mw_km`: Raman count-rate coefficient in Hz/(mW km).
 - `raman_filter_isolation_db`: optical filter isolation applied to Raman noise.
@@ -536,6 +561,10 @@ error. The effective-model provenance records the concrete class.
   unavailable.
 - `afterpulse_probability`: per-gate probability of a false click after a
   previous detection.
+- `afterpulse_tau_s`: optional positive decay constant. With a previous firing
+  at `t_prev`, the current probability is
+  `p_ap = afterpulse_probability * exp(-max(0, t - t_prev) / afterpulse_tau_s)`.
+  `None` preserves the legacy constant per-gate probability.
 
 Dark-count approximation:
 
@@ -754,6 +783,14 @@ into a single "secure" boolean:
 
 Thus a positive `secret_key_rate_bps` is not a finite-key bound, composable
 proof, verified production key, or guarantee for a real implementation.
+
+For repeated sweeps, `summarize_metric_rows` adds Wilson score intervals for
+pooled proportions (QBER, gain, and binary decisions) and two-sided Student-t
+intervals for means across independent repeats. An undefined interval is
+serialized as `bounds=[null, null]` when its denominator is zero or fewer than
+two repeats are available. Descriptive `p05`/`p95` columns are empirical
+percentiles, not confidence bounds and not composable-security failure
+probabilities.
 
 In Phase 3, `loss_db` is the active channel loss for the scenario. `gain`
 continues to mean detections per attempted pulse, including dark-count

@@ -7,7 +7,12 @@ from dataclasses import dataclass
 
 from qiskit_qkd._json import JSONObject
 from qiskit_qkd.backends import QiskitSamplerBackend, backend_from_scenario
-from qiskit_qkd.channel_core import prepare_physical_round
+from qiskit_qkd.channel_core import (
+    PreparedState,
+    physical_round_from_emission,
+    prepare_physical_round,
+    sample_surviving_photons,
+)
 from qiskit_qkd.channels import channel_from_config
 from qiskit_qkd.channels.impairments import effective_background_count_rate_hz
 from qiskit_qkd.config import Scenario, require_executable_scenario
@@ -25,7 +30,7 @@ from qiskit_qkd.results import Event, Metrics, SimulationResult
 from qiskit_qkd.sources import source_from_config
 from qiskit_qkd.timing import timing_context_from_scenario
 
-MeasureRound = tuple[int, str, str]
+MeasureRound = tuple[PreparedState, str]
 CancellationCheck = Callable[[], None]
 
 
@@ -54,6 +59,9 @@ class PreparedRound:
     surviving_photon_number: int
     intensity_class: str | None
     transmitted: bool
+    prepared_state: PreparedState
+    eve_attack: object | None = None
+    eve_position: str = "post_loss"
 
 
 class BB84Protocol:
@@ -84,9 +92,7 @@ class BB84Protocol:
                 "use analysis.sweep_bb84_time",
             )
 
-        backend = backend or backend_from_scenario(scenario)
-        if hasattr(backend, "configure_from_scenario"):
-            backend.configure_from_scenario(scenario)
+        backend = backend_from_scenario(scenario, backend=backend)
         rng = make_rng(scenario.seed)
         sample_rng = make_rng(scenario.seed + 0xE7E17)
         source = source_from_config(scenario.source)
@@ -139,18 +145,40 @@ class BB84Protocol:
             attack_results = []
             measure_rounds = []
             for round_ in batch:
+                attack = round_.eve_attack
                 if round_.signal_assigned_slot is None:
-                    attack_results.append(None)
+                    # A pre-loss Eve may already have acted even when the
+                    # forwarded signal was later lost or missed Bob's gate.
+                    # Preserve that trace without treating it as a Bob-side
+                    # interception opportunity in the aggregate metrics.
+                    attack_results.append(attack)
                     continue
-                attack = eavesdropper.attack(
-                    bit=round_.alice_bit,
-                    basis=round_.alice_basis,
-                    basis_choices=bases,
-                    rng=rng,
-                    photon_number=round_.photon_number,
-                    surviving_photon_number=round_.surviving_photon_number,
-                    intensity_class=round_.intensity_class,
-                )
+                if attack is None:
+                    attack = eavesdropper.attack(
+                        bit=round_.prepared_state.prepared_bit,
+                        basis=round_.prepared_state.alice_basis,
+                        basis_choices=bases,
+                        rng=rng,
+                        photon_number=round_.photon_number,
+                        surviving_photon_number=round_.surviving_photon_number,
+                        intensity_class=round_.intensity_class,
+                        prepared_state=round_.prepared_state,
+                    )
+                # A custom Eve adapter must obey the same photon accounting as
+                # the built-in models.  In pre-loss mode its forwarded count
+                # is bounded by the emitted pulse; in post-loss mode it is
+                # bounded by photons that actually survived the channel.
+                if attack.forwarded_photon_number is not None:
+                    upper_bound = (
+                        round_.photon_number
+                        if round_.eve_position == "pre_loss"
+                        else round_.surviving_photon_number
+                    )
+                    if attack.forwarded_photon_number > upper_bound:
+                        raise ValueError(
+                            "Eve forwarded_photon_number cannot exceed "
+                            f"{upper_bound} photons at {round_.eve_position}",
+                        )
                 attack_results.append(attack)
                 eve_interceptions += int(attack.intercepted)
                 if attack.block_signal:
@@ -159,7 +187,16 @@ class BB84Protocol:
                     round_.signal_assigned_slot
                 ]
                 measure_rounds.append(
-                    (attack.resend_bit, attack.resend_basis, bob_measurement_basis),
+                    (
+                        PreparedState(
+                            alice_bit=attack.resend_bit,
+                            alice_basis=attack.resend_basis,
+                            prepared_bit=attack.resend_bit,
+                            preparation_error=round_.prepared_state.preparation_error,
+                            preparation_error_applied=True,
+                        ),
+                        bob_measurement_basis,
+                    ),
                 )
             bob_bits = (
                 self._measure_batch(backend, measure_rounds)
@@ -186,6 +223,7 @@ class BB84Protocol:
                         round_.surviving_photon_number
                         if attack is None
                         or attack.forwarded_photon_number is None
+                        or round_.eve_position == "pre_loss"
                         else attack.forwarded_photon_number
                     )
                 )
@@ -229,6 +267,13 @@ class BB84Protocol:
                     bob_bit=detection.bob_bit,
                     sifting_enabled=sifting_enabled,
                 )
+                tags = {} if attack is None else attack.tags()
+                # Third-party Eve implementations may not expose the optional
+                # placement field.  Keep the physical location visible in the
+                # event diagnostics without requiring Alice/Bob to consume
+                # adversarial internals.
+                if attack is not None and attack.intercepted:
+                    tags.setdefault("eve_attack_position", round_.eve_position)
                 event = Event(
                     index=round_.index,
                     time_s=round_.time_s,
@@ -261,7 +306,7 @@ class BB84Protocol:
                     eve_detectable=(
                         False if attack is None else attack.eve_detectable
                     ),
-                    tags={} if attack is None else attack.tags(),
+                    tags=tags,
                 )
                 emitted += int(event.emitted)
                 transmitted += int(event.transmitted)
@@ -293,17 +338,70 @@ class BB84Protocol:
             alice_bit = rng.randrange(2)
             alice_basis = rng.choice(bases)
             bob_basis = rng.choice(bases)
-            bob_basis_by_slot[index] = bob_basis
-            physical = prepare_physical_round(
-                index=index,
-                scenario=scenario,
-                source=source,
-                channel=channel,
-                rng=rng,
+            prepared_state = PreparedState.sample(
                 alice_bit=alice_bit,
                 alice_basis=alice_basis,
-                timing_context=timing_context,
+                preparation_error_probability=(
+                    scenario.source.preparation_error_probability
+                ),
+                rng=rng,
             )
+            bob_basis_by_slot[index] = bob_basis
+            eve_attack = None
+            if scenario.eavesdropper.attack_position == "pre_loss":
+                emission_time_s = index * timing_context.slot_period_s
+                emission = source.emit(rng=rng, time_s=emission_time_s)
+                if emission.photon_number > 0:
+                    eve_attack = eavesdropper.attack(
+                        bit=prepared_state.prepared_bit,
+                        basis=prepared_state.alice_basis,
+                        basis_choices=bases,
+                        rng=rng,
+                        photon_number=emission.photon_number,
+                        surviving_photon_number=emission.photon_number,
+                        intensity_class=emission.intensity_class,
+                        prepared_state=prepared_state,
+                    )
+                forwarded = (
+                    emission.photon_number
+                    if eve_attack is None
+                    else (
+                        0
+                        if eve_attack.block_signal
+                        else (
+                            emission.photon_number
+                            if eve_attack.forwarded_photon_number is None
+                            else eve_attack.forwarded_photon_number
+                        )
+                    )
+                )
+                surviving = sample_surviving_photons(
+                    channel,
+                    rng,
+                    forwarded,
+                    scenario=scenario,
+                    alice_bit=prepared_state.prepared_bit,
+                    alice_basis=alice_basis,
+                )
+                physical = physical_round_from_emission(
+                    index=index,
+                    scenario=scenario,
+                    emission=emission,
+                    surviving_photon_number=surviving,
+                    rng=rng,
+                    timing_context=timing_context,
+                )
+            else:
+                physical = prepare_physical_round(
+                    index=index,
+                    scenario=scenario,
+                    source=source,
+                    channel=channel,
+                    rng=rng,
+                    alice_bit=prepared_state.prepared_bit,
+                    alice_basis=alice_basis,
+                    timing_context=timing_context,
+                )
             pending.append(
                 PreparedRound(
                     index=physical.index,
@@ -324,6 +422,9 @@ class BB84Protocol:
                     surviving_photon_number=physical.surviving_photon_number,
                     intensity_class=physical.intensity_class,
                     transmitted=physical.transmitted,
+                    prepared_state=prepared_state,
+                    eve_attack=eve_attack,
+                    eve_position=scenario.eavesdropper.attack_position,
                 ),
             )
             while (
@@ -406,11 +507,17 @@ class BB84Protocol:
         backend: QiskitSamplerBackend,
         rounds: Sequence[MeasureRound],
     ) -> tuple[int, ...]:
+        if hasattr(backend, "measure_bb84_prepared_batch"):
+            return tuple(backend.measure_bb84_prepared_batch(rounds))
+        legacy_rounds = tuple(
+            (state.prepared_bit, state.alice_basis, bob_basis)
+            for state, bob_basis in rounds
+        )
         if hasattr(backend, "measure_bb84_batch"):
-            return tuple(backend.measure_bb84_batch(rounds))
+            return tuple(backend.measure_bb84_batch(legacy_rounds))
         return tuple(
-            backend.measure_bb84(bit, alice_basis, bob_basis)
-            for bit, alice_basis, bob_basis in rounds
+            backend.measure_bb84(state.prepared_bit, state.alice_basis, bob_basis)
+            for state, bob_basis in rounds
         )
 
     @staticmethod

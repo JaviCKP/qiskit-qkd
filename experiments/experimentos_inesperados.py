@@ -15,8 +15,11 @@ Cada experimento explora un fenómeno no intuitivo del protocolo BB84:
 
 from __future__ import annotations
 
+import argparse
 import math
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 from qiskit_qkd import (
     BB84Protocol,
@@ -25,45 +28,123 @@ from qiskit_qkd import (
     DetectorConfig,
     EveConfig,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
     SourceConfig,
     TimingConfig,
 )
+from qiskit_qkd.backends import backend_from_scenario
+from qiskit_qkd.experiments import write_artifact
 
 SEPARATOR = "=" * 72
 SUBSEP = "-" * 72
+_ARTIFACT_ROWS: list[dict] = []
+_ARTIFACT_SCENARIOS: list[Scenario] = []
+
+
+def _record_artifact_row(scenario: object, payload: dict) -> None:
+    try:
+        to_dict = getattr(scenario, "to_dict", None)
+        if not callable(to_dict):
+            return
+        row = dict(payload)
+        row["scenario"] = to_dict()
+        _ARTIFACT_ROWS.append(row)
+        _ARTIFACT_SCENARIOS.append(scenario)
+    except (AttributeError, TypeError):
+        return
+
+
+def _configure_console_output() -> None:
+    """Keep the Unicode scientific notation printable on Windows consoles."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utilidades
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _mapping(value: object) -> dict:
+    """Return a plain mapping for result payloads and dataclass assessments."""
+
+    if value is None:
+        return {}
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        value = to_dict()
+    return dict(value) if hasattr(value, "items") else {}
+
+
+def run_result(scenario: Scenario):
+    """Run one scenario through the canonical scenario-aware backend."""
+
+    return BB84Protocol().run(scenario, backend=backend_from_scenario(scenario))
+
+
 def run(scenario: Scenario) -> dict:
-    backend = QiskitSamplerBackend(
-        seed=scenario.seed,
-        max_circuits_per_job=512,
-        max_recorded_results=0,
-    )
-    result = BB84Protocol().run(scenario, backend=backend)
+    """Return authoritative assessment plus physical observations.
+
+    ``Metrics.qber``, ``Metrics.abort`` and ``Metrics.secret_key_rate_bps`` are
+    schema-v1 compatibility values.  They are intentionally not consulted
+    here: in particular, ``metrics.qber == 0`` is not evidence that QBER was
+    defined when no sifted bits exist.
+    """
+
+    result = run_result(scenario)
+    assessment = _mapping(result.assessment)
+    classical = _mapping(result.classical)
+    decoy = _mapping(result.decoy)
+    bell = _mapping(result.bell)
     m = result.metrics
-    return {
+    qber_defined = bool(assessment.get("qber_defined", False))
+    qber_value = assessment.get("qber_value") if qber_defined else None
+    rate_status = assessment.get("rate_estimate_status", "unavailable")
+    rate_value = (
+        assessment.get("rate_estimate_bps")
+        if rate_status == "available"
+        else None
+    )
+    threshold_exceeded = assessment.get("threshold_exceeded")
+    abort = (
+        threshold_exceeded is True
+        or assessment.get("key_status") == "no_key_threshold_exceeded"
+    )
+    payload = {
+        # Physical observations (not security decisions).
         "pulses":           m.pulses,
         "emitted":          m.emitted,
         "transmitted":      m.transmitted,
         "detected":         m.detected,
         "sifted":           m.sifted,
         "errors":           m.errors,
-        "qber":             m.qber,
         "gain":             m.gain,
         "loss_db":          m.loss_db,
-        "secret_bps":       m.secret_key_rate_bps,
         "sifted_bps":       m.sifted_key_rate_bps,
-        "abort":            m.abort,
-        "dead_discards":    m.dead_time_discards,
+        "timing_discards":  m.timing_discards,
+        "dead_time_discards": m.dead_time_discards,
         "afterpulse":       m.afterpulse_clicks,
         "eve_frac":         m.eve_intercepted_fraction,
         "eve_info":         m.eve_information_estimate,
+        # Authoritative result-level evidence.
+        "assessment":       assessment,
+        "classical":        classical,
+        "decoy":            decoy,
+        "decoy_security":   _mapping(decoy.get("security")),
+        "bell":             bell,
+        "qber_defined":     qber_defined,
+        "qber":             qber_value,
+        "rate_estimate_status": rate_status,
+        "secret_bps":       rate_value,
+        "verification_status": assessment.get(
+            "verification_status",
+            classical.get("verification_status"),
+        ),
+        "abort":            abort,
     }
+    _record_artifact_row(scenario, payload)
+    return payload
 
 
 def header(title: str) -> None:
@@ -80,15 +161,31 @@ def subheader(title: str) -> None:
 
 def show(label: str, r: dict, notes: str = "") -> None:
     abort_str = " [ABORT]" if r["abort"] else ""
+    qber = "n/d" if not r["qber_defined"] else f"{r['qber']:.4f}"
+    rate = (
+        "n/d"
+        if r["secret_bps"] is None
+        else f"{r['secret_bps']:10.2f}"
+    )
     print(
         f"  {label:<38} | "
-        f"QBER={r['qber']:6.4f} | "
-        f"secret={r['secret_bps']:10.2f} bps | "
+        f"QBER={qber:>6} | "
+        f"rate={rate} bps | "
         f"sifted={r['sifted']:5d} | "
         f"gain={r['gain']:.5f}{abort_str}"
     )
     if notes:
         print(f"    ↳ {notes}")
+
+
+def qber_text(r: dict, width: int = 8) -> str:
+    value = "n/d" if not r["qber_defined"] else f"{r['qber']:.4f}"
+    return f"{value:>{width}}"
+
+
+def rate_text(r: dict, width: int = 12) -> str:
+    value = "n/d" if r["secret_bps"] is None else f"{r['secret_bps']:.2f}"
+    return f"{value:>{width}}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -97,43 +194,73 @@ def show(label: str, r: dict, notes: str = "") -> None:
 # Fuente coherente débil (WCS) con μ alto vs μ bajo
 # ═════════════════════════════════════════════════════════════════════════════
 def exp1_high_mu_kills_key():
-    header("EXP 1 – μ alto destruye la clave (ataque PNS implícito)")
+    header("EXP 1 – μ alto y PNS: la ganancia no es la seguridad")
 
     print("""
-  HIPÓTESIS INGENUA: cuantos más fotones enviemos, más clave obtendremos.
-  REALIDAD: μ > 1 genera pulsos multi-fotón que Eve puede robar (PNS attack).
-  La tasa de clave DISMINUYE con μ creciente aunque el gain sube.
+  HIPÓTESIS: aumentar μ eleva la ganancia, pero también la fracción
+  multifotónica que puede aprovechar un ataque PNS.
+  DISEÑO: se comparan exactamente las mismas intensidades (señal, señuelo
+  débil y vacío) sin Eve y con PhotonNumberSplittingEve situado antes de la
+  pérdida del canal. La evidencia de seguridad es decoy["security"], no una
+  tasa genérica de Metrics.
 """)
 
-    base = dict(pulses=8_000, clock_rate_hz=1_000_000.0, seed=42)
-
-    for mu in [0.05, 0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 5.0]:
-        scenario = Scenario(
+    base = dict(pulses=3_000, clock_rate_hz=1_000_000.0, seed=42)
+    for mu in [0.3, 0.7, 1.5, 3.0]:
+        intensities = (
+            DecoyIntensity("signal", mean_photon_number=mu, selection_probability=0.7),
+            DecoyIntensity("weak", mean_photon_number=0.1, selection_probability=0.2),
+            DecoyIntensity("vacuum", mean_photon_number=0.0, selection_probability=0.1),
+        )
+        common = dict(
             **base,
-            source=SourceConfig(
-                kind="weak_coherent",
-                decoy_intensities=(
-                    DecoyIntensity("signal", mean_photon_number=mu,
-                                  selection_probability=1.0),
+            source=SourceConfig(kind="weak_coherent", decoy_intensities=intensities),
+            channel=ChannelConfig(kind="fiber", distance_km=20.0, attenuation_db_km=0.2),
+            detector=DetectorConfig(kind="threshold", efficiency=0.85),
+            post_processing=PostProcessingConfig(
+                qber_abort_threshold=0.11,
+                decoy_security_estimation_enabled=True,
+            ),
+        )
+        for label, eve in (
+            ("sin Eve", EveConfig(kind="none")),
+            (
+                "PNS pre-loss",
+                EveConfig(
+                    kind="photon_number_splitting",
+                    attack_position="pre_loss",
+                    pns_block_single_photon_probability=1.0,
                 ),
             ),
-            channel=ChannelConfig(
-                kind="fiber", distance_km=20.0, attenuation_db_km=0.2
-            ),
-            detector=DetectorConfig(kind="threshold", efficiency=0.85),
-            post_processing=PostProcessingConfig(qber_abort_threshold=None),
-        )
-        r = run(scenario)
-        multi_frac = 1 - math.exp(-mu) * (1 + mu)  # fracción multi-fotón Poisson
-        show(
-            f"μ={mu:.2f}",
-            r,
-            f"fracción multi-fotón≈{multi_frac:.3f}, gain={r['gain']:.4f}",
-        )
+        ):
+            scenario = Scenario(**common, eavesdropper=eve)
+            r = run(scenario)
+            security = r["decoy_security"]
+            security_status = security.get("data_status", "unavailable")
+            security_rate = (
+                security.get("secret_key_rate_bps")
+                if security_status == "available"
+                else None
+            )
+            security_rate_text = (
+                "n/a" if security_rate is None else f"{security_rate:.2f}"
+            )
+            gains = ", ".join(
+                f"{name}={row.get('gain', 0.0):.4f}"
+                for name, row in r["decoy"].items()
+                if name != "security" and isinstance(row, dict)
+            )
+            print(
+                f"  μ={mu:.2f} {label:<8} | gains({gains}) | "
+                f"decoy_status={security_status} | "
+                f"decoy_rate={security_rate_text} | Eve_info={r['eve_info']:.3f}"
+            )
 
     print("""
-  CONCLUSIÓN: Aunque gain aumenta con μ, la fracción de pulsos multi-fotón
-  que puede espiar Eve crece exponencialmente. El óptimo está en μ ≈ 0.1-0.5.
+  CONCLUSIÓN: una comparación sin atacante no prueba una degradación PNS.
+  La fracción multifotónica y la información estimada de Eve deben leerse
+  junto con la tasa de decoy.security; el valor óptimo depende del canal,
+  detector, estimador y tamaño de muestra.
 """)
 
 
@@ -170,29 +297,32 @@ def exp2_eve_qber_math():
         r = run(scenario)
         teorico = p / 4.0
         print(
-            f"  {p:12.2f} | {r['qber']:9.4f} | {teorico:13.4f} | "
-            f"{abs(r['qber'] - teorico):10.4f}"
+            f"  {p:12.2f} | {qber_text(r, 9)} | {teorico:13.4f} | "
+            f"{abs((r['qber'] or 0.0) - teorico):10.4f}"
         )
 
     print("""
   CONCLUSIÓN: El QBER sigue exactamente Q = p_int/4 (ruido de fondo cero).
   Esto es sorprendente: interceptar el 100% solo introduce 25% de error.
-  Por eso el umbral de aborto se fija en 11% (≡ p_int ≈ 44%).
+  El 11% es solo el umbral configurado en este ejemplo; no es universal.
+  Cambiarlo requiere declarar el modelo de seguridad y sus supuestos.
 """)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # EXPERIMENTO 3
-# "Ruido de preparación vs ruido de Eve: son indistinguibles"
+# "Ruido de preparación vs ruido de Eve: la QBER agregada puede coincidir"
 # ═════════════════════════════════════════════════════════════════════════════
 def exp3_prep_error_mimics_eve():
-    header("EXP 3 – Error de preparación es indistinguible de ataque de Eve")
+    header("EXP 3 – QBER agregada no identifica la causa de la perturbación")
 
     print("""
   HIPÓTESIS INGENUA: Si Alice comete errores de preparación, Bob lo detecta.
-  REALIDAD: preparation_error_probability produce EXACTAMENTE el mismo QBER
-  que un ataque Eve con p_int = 4 * prep_error (ambos ~aleatorios por defecto).
-  Alice no puede distinguir si sus errores son de equipo o de Eve.
+  REALIDAD: se puede escoger p_int = 4 * prep_error para hacer coincidir
+  aproximadamente una sola métrica agregada. Eso no hace idénticos los
+  procesos: difieren la información de Eve, metadatos, distribuciones
+  condicionadas y su respuesta a otros ruidos. La autenticación tampoco
+  identifica por sí sola la causa física del error.
 """)
 
     pulses = 8_000
@@ -229,13 +359,13 @@ def exp3_prep_error_mimics_eve():
                                    intercept_probability=p_eve),
         )
         r = run(s)
-        show(f"Eve p={p_eve:.2f} (equiv a prep={prep_err:.2f})", r)
+        show(f"Eve p={p_eve:.2f} (QBER comparable)", r)
 
     print("""
-  CONCLUSIÓN: Alice y Bob no pueden distinguir errores de hardware de un
-  ataque Eve. Necesitan un canal clásico autenticado para comparar paridades
-  (reconciliación) y luego privacy amplification para eliminar la información
-  que pudiera tener Eve de los errores de equipo.
+  CONCLUSIÓN: la QBER agregada no basta para distinguir algunas causas de
+  perturbación. Las diferencias de información de Eve y de modelo deben
+  mantenerse explícitas; reconciliación y amplificación de privacidad no
+  convierten los dos procesos en exactamente indistinguibles.
 """)
 
 
@@ -244,13 +374,13 @@ def exp3_prep_error_mimics_eve():
 # "Detector más eficiente puede empeorar la clave con ruido oscuro"
 # ═════════════════════════════════════════════════════════════════════════════
 def exp4_efficiency_dark_count_tradeoff():
-    header("EXP 4 – Eficiencia alta con dark counts eleva el QBER: la paradoja del detector")
+    header("EXP 4 – Barridos factoriales del detector: una variable cada vez")
 
     print("""
-  HIPÓTESIS INGENUA: un detector con eficiencia 90% siempre es mejor que uno de 20%.
-  REALIDAD: si la dark_count_rate_hz es alta, el ancho de puerta necesario para
-  capturar fotones también sube la probabilidad de dark counts espúreos.
-  Con eficiencia alta y dark counts altos, el QBER puede SUPERAR el umbral.
+  Se separan tres efectos que antes cambiaban simultáneamente: eficiencia,
+  tasa de conteos oscuros y anchura de ventana. A ruido y ventana constantes,
+  aumentar la eficiencia suele mejorar la relación señal/ruido; las
+  interacciones se estudian aparte, no se atribuyen a una sola variable.
 """)
 
     base_kwargs = dict(
@@ -261,41 +391,51 @@ def exp4_efficiency_dark_count_tradeoff():
         post_processing=PostProcessingConfig(qber_abort_threshold=0.11),
     )
 
-    print(f"\n  {'efficiency':>11} | {'dark_hz':>10} | {'gate_ns':>7} | "
-          f"{'QBER':>8} | {'secret_bps':>12} | {'abort':>5}")
-    print(f"  {'-'*11} | {'-'*10} | {'-'*7} | {'-'*8} | {'-'*12} | {'-'*5}")
+    def sweep(label: str, values: list[float], detector_for):
+        print(f"\n  {label}")
+        print(f"  {'value':>12} | {'QBER':>8} | {'rate_status':>16} | {'gain':>8}")
+        print(f"  {'-'*12} | {'-'*8} | {'-'*16} | {'-'*8}")
+        for value in values:
+            scenario = Scenario(**base_kwargs, detector=detector_for(value))
+            r = run(scenario)
+            qber = "n/d" if not r["qber_defined"] else f"{r['qber']:.4f}"
+            print(
+                f"  {value:12.4g} | {qber:>8} | "
+                f"{r['rate_estimate_status']:>16} | {r['gain']:8.5f}"
+            )
 
-    configs = [
-        (0.20, 100.0,        1e-9),
-        (0.50, 100.0,        1e-9),
-        (0.90, 100.0,        1e-9),
-        (0.90, 10_000.0,     1e-9),
-        (0.90, 100_000.0,    1e-9),
-        (0.90, 1_000_000.0,  1e-9),
-        (0.90, 1_000_000.0,  1e-8),   # ventana 10x más ancha = 10x más dark counts
-    ]
-
-    for eff, dark, gate in configs:
-        scenario = Scenario(
-            **base_kwargs,
-            detector=DetectorConfig(
-                kind="threshold",
-                efficiency=eff,
-                dark_count_rate_hz=dark,
-                gate_width_s=gate,
-            ),
-        )
-        r = run(scenario)
-        abort_str = "  YES" if r["abort"] else "   no"
-        print(
-            f"  {eff:11.2f} | {dark:10.0f} | {gate*1e9:7.1f} | "
-            f"{r['qber']:8.4f} | {r['secret_bps']:12.2f} | {abort_str}"
-        )
+    fixed_dark = 100.0
+    fixed_gate = 1e-9
+    sweep(
+        "eficiencia (dark_hz=100, gate_ns=1)",
+        [0.2, 0.5, 0.7, 0.9],
+        lambda efficiency: DetectorConfig(
+            kind="threshold", efficiency=efficiency,
+            dark_count_rate_hz=fixed_dark, gate_width_s=fixed_gate,
+        ),
+    )
+    fixed_efficiency = 0.7
+    sweep(
+        "dark count (efficiency=0.7, gate_ns=1)",
+        [0.0, 1e3, 1e4, 1e5, 1e6],
+        lambda dark: DetectorConfig(
+            kind="threshold", efficiency=fixed_efficiency,
+            dark_count_rate_hz=dark, gate_width_s=fixed_gate,
+        ),
+    )
+    sweep(
+        "ventana (efficiency=0.7, dark_hz=100)",
+        [0.25e-9, 0.5e-9, 1e-9, 2e-9, 5e-9],
+        lambda gate: DetectorConfig(
+            kind="threshold", efficiency=fixed_efficiency,
+            dark_count_rate_hz=fixed_dark, gate_width_s=gate,
+        ),
+    )
 
     print("""
-  CONCLUSIÓN: el gate_width_s importa tanto como la eficiencia. Doblar la
-  ventana equivale a doblar el ruido oscuro efectivo. Hay un punto óptimo de
-  compromiso entre detectar señales tardías y aceptar más ruido.
+  CONCLUSIÓN: cada barrido permite atribuir cambios a su variable controlada.
+  Un diseño factorial adicional puede mostrar interacciones, pero no sustituye
+  estos tres controles aislados.
 """)
 
 
@@ -321,8 +461,8 @@ def exp5_dead_time_saturation():
     )
 
     print(f"\n  {'dead_time_s':>12} | {'dead_time_ns':>12} | "
-          f"{'gain':>8} | {'dead_discards':>14} | {'secret_bps':>12}")
-    print(f"  {'-'*12} | {'-'*12} | {'-'*8} | {'-'*14} | {'-'*12}")
+          f"{'gain':>8} | {'dead_time_discards':>18} | {'rate_status':>16}")
+    print(f"  {'-'*12} | {'-'*12} | {'-'*8} | {'-'*18} | {'-'*16}")
 
     for dead_ns in [0, 100, 500, 1_000, 2_000, 5_000, 10_000]:
         dead_s = dead_ns * 1e-9
@@ -337,8 +477,8 @@ def exp5_dead_time_saturation():
         r = run(scenario)
         print(
             f"  {dead_s:12.2e} | {dead_ns:12d} | "
-            f"{r['gain']:8.5f} | {r['dead_discards']:14d} | "
-            f"{r['secret_bps']:12.2f}"
+            f"{r['gain']:8.5f} | {r['dead_time_discards']:18d} | "
+            f"{r['rate_estimate_status']:>16}"
         )
 
     print("""
@@ -385,8 +525,8 @@ def exp6_afterpulse_ghost_clicks():
         r = run(scenario)
         abort_str = "  YES" if r["abort"] else "   no"
         print(
-            f"  {ap:16.2f} | {r['qber']:8.4f} | {r['afterpulse']:11d} | "
-            f"{r['sifted']:8d} | {r['secret_bps']:12.2f} | {abort_str}"
+            f"  {ap:16.2f} | {qber_text(r)} | {r['afterpulse']:11d} | "
+            f"{r['sifted']:8d} | {rate_text(r)} | {abort_str}"
         )
 
     print("""
@@ -398,16 +538,17 @@ def exp6_afterpulse_ghost_clicks():
 
 # ═════════════════════════════════════════════════════════════════════════════
 # EXPERIMENTO 7
-# "La rotación de polarización π/2 (90°) destruye la clave, pero π (180°) NO"
+# "La rotación de polarización sigue sin²(θ/2) por base"
 # ═════════════════════════════════════════════════════════════════════════════
 def exp7_polarization_rotation_surprise():
-    header("EXP 7 – Rotación de polarización: π/2 destroys key, pero π es inofensiva!")
+    header("EXP 7 – Rotación de polarización: sin²(θ/2) y dependencia de base")
 
     print("""
-  HIPÓTESIS INGENUA: cualquier rotación de polarización introduce errores.
-  REALIDAD: una rotación de π (180°) en Y invierte todos los bits → QBER=0.5.
-  PERO una rotación de π (180°) en Z solo cambia la fase global → QBER≈0.
-  La rotación Y de π/4 (45°) mezcla las bases Z y X → QBER máximo.
+  Para el modelo actual, la probabilidad de error por base sigue
+  Q(θ)=sin²(θ/2). En el eje Y usado en la primera tabla, θ=π invierte ambas
+  bases y da QBER≈1. Si el eje deja Z invariante y solo mezcla X, θ=π da
+  aproximadamente QBER=0.5 con bases equiprobables. No es una fase global
+  inofensiva para todo el protocolo: hay que reportar la base y el modelo.
 
   (polarization_rotation_y_rad rota sobre eje Y del bloch sphere)
 """)
@@ -419,17 +560,15 @@ def exp7_polarization_rotation_surprise():
         post_processing=PostProcessingConfig(qber_abort_threshold=None),
     )
 
-    print(f"\n  {'rotación Y (rad)':>17} | {'QBER':>8} | {'descripción'}")
-    print(f"  {'-'*17} | {'-'*8} | {'-'*40}")
+    print(f"\n  {'rotación Y (rad)':>17} | {'QBER':>8} | {'esperada':>8} | {'descripción'}")
+    print(f"  {'-'*17} | {'-'*8} | {'-'*8} | {'-'*32}")
 
     angles = [
-        (0.0,           "sin rotación (ideal)"),
-        (math.pi/8,     "π/8 = 22.5° (débil)"),
-        (math.pi/4,     "π/4 = 45° (mezcla máxima)"),
-        (math.pi/2,     "π/2 = 90° (rotación cuarto)"),
-        (math.pi,       "π = 180° (inversión total)"),
-        (3*math.pi/2,   "3π/2 = 270°"),
-        (2*math.pi,     "2π = 360° (vuelta completa ≈ ideal)"),
+        (0.0, "0"),
+        (math.pi / 2, "π/2"),
+        (math.pi, "π"),
+        (3 * math.pi / 2, "3π/2"),
+        (2 * math.pi, "2π"),
     ]
 
     for angle, desc in angles:
@@ -438,7 +577,11 @@ def exp7_polarization_rotation_surprise():
             channel=ChannelConfig(polarization_rotation_y_rad=angle),
         )
         r = run(scenario)
-        print(f"  {angle:17.4f} | {r['qber']:8.4f} | {desc}")
+        expected = math.sin(angle / 2) ** 2
+        observed = "n/d" if not r["qber_defined"] else f"{r['qber']:.4f}"
+        print(
+            f"  {angle:17.4f} | {observed:>8} | {expected:8.4f} | {desc}"
+        )
 
     print("\n  Ahora eje Z:")
     print(f"\n  {'rotación Z (rad)':>17} | {'QBER':>8} | {'descripción'}")
@@ -457,12 +600,12 @@ def exp7_polarization_rotation_surprise():
             channel=ChannelConfig(polarization_rotation_z_rad=angle),
         )
         r = run(scenario)
-        print(f"  {angle:17.4f} | {r['qber']:8.4f} | {desc}")
+        print(f"  {angle:17.4f} | {qber_text(r)} | {desc}")
 
     print("""
-  CONCLUSIÓN: La rotación Z introduce fase global → no afecta probabilidades
-  de medición en las bases Z y X usadas en BB84. La rotación Y de π/2 es
-  la más dañina porque transforma |0⟩→|1⟩ y |+⟩→|-⟩ simultáneamente.
+  CONCLUSIÓN: la tabla compara la predicción sin²(θ/2) con la observación.
+  Si QBER≥0.5, la evaluación de tasa queda no disponible o cero; en
+  particular, no reaparece una tasa positiva al alcanzar QBER=1.
 """)
 
 
@@ -490,8 +633,8 @@ def exp8_timing_jitter_kills_gain():
     )
 
     print(f"\n  {'jitter_std_s':>13} | {'jitter_ns':>9} | "
-          f"{'gain':>8} | {'timing_disc':>12} | {'sifted':>8}")
-    print(f"  {'-'*13} | {'-'*9} | {'-'*8} | {'-'*12} | {'-'*8}")
+          f"{'gain':>8} | {'timing_discards':>15} | {'sifted':>8}")
+    print(f"  {'-'*13} | {'-'*9} | {'-'*8} | {'-'*15} | {'-'*8}")
 
     for jitter_ns in [0, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 50.0]:
         jitter_s = jitter_ns * 1e-9
@@ -502,7 +645,7 @@ def exp8_timing_jitter_kills_gain():
         r = run(scenario)
         print(
             f"  {jitter_s:13.2e} | {jitter_ns:9.1f} | "
-            f"{r['gain']:8.5f} | {r['dead_discards']:12d} | "
+            f"{r['gain']:8.5f} | {r['timing_discards']:15d} | "
             f"{r['sifted']:8d}"
         )
 
@@ -554,7 +697,7 @@ def exp9_clock_drift_accumulates():
             print(
                 f"  {drift_ppm:10.1f} | {n_pulses:8d} | "
                 f"{r['gain']:8.5f} | {r['sifted']:8d} | "
-                f"{r['secret_bps']:12.2f}"
+                f"{rate_text(r)}"
             )
 
     print("""
@@ -567,17 +710,17 @@ def exp9_clock_drift_accumulates():
 
 # ═════════════════════════════════════════════════════════════════════════════
 # EXPERIMENTO 10
-# "Sifting desactivado: QBER se va a 50%"
+# "Sifting desactivado: la QBER global se acerca a 25%"
 # ═════════════════════════════════════════════════════════════════════════════
 def exp10_no_sifting():
-    header("EXP 10 – Sin sifting: el 50% de las bases no coinciden → QBER→50%")
+    header("EXP 10 – Sin sifting: la QBER global se acerca a 25%")
 
     print("""
   HIPÓTESIS INGENUA: si Alice y Bob miden en bases distintas, solo se introduce
   algo de ruido extra.
   REALIDAD: medir en base X cuando Alice preparó en Z da un bit COMPLETAMENTE
-  aleatorio. Con sifting_enabled=False, la mitad de los bits son random →
-  QBER ≈ 50% independientemente del canal. La clave es basura.
+  aleatorio. La mitad de las parejas usa bases distintas y, en ellas, la
+  mitad de los bits discrepa: QBER global ≈ 0.5 × 0.5 = 25%.
 """)
 
     base_kwargs = dict(
@@ -612,7 +755,7 @@ def exp10_no_sifting():
     show("sin sifting + prep_err=0.10", r)
 
     print("""
-  NOTA: QBER con sifting desactivado ≈ 0.25, no 0.50. Esto se debe a que
+  NOTA: QBER global con sifting desactivado ≈ 0.25, no 0.50. Esto se debe a que
   cuando las bases NO coinciden, el bit de Bob es totalmente aleatorio,
   pero solo la mitad de los pares de bases divergen en BB84 (Z vs X y X vs Z).
   De esos, la mitad dan error → 0.5 * 0.5 = 0.25. Inesperado pero correcto.
@@ -670,14 +813,15 @@ def exp11_background_radiation():
         r = run(scenario)
         print(
             f"  {bg_hz:12.0f} | {emission:9.1f} | "
-            f"{r['gain']:8.5f} | {r['qber']:8.4f} | "
-            f"{r['detected']:9d} | {r['secret_bps']:12.2f}"
+                f"{r['gain']:8.5f} | {qber_text(r)} | "
+                f"{r['detected']:9d} | {rate_text(r)}"
         )
 
     print("""
-  CONCLUSIÓN: con emission=0.0 y solo background, el gain puede ser alto pero
-  el QBER ≈ 0.25 (bits completamente aleatorios). Con emission=1.0, la señal
-  domina y el background apenas afecta. El ratio señal/ruido importa.
+  CONCLUSIÓN: con emission=0.0 y solo background, los bits que sobreviven al
+  cribado son aleatorios y la QBER post-cribado tiende a 0.5, no a 0.25.
+  Con emission=1.0, la señal domina y el background apenas afecta. El ratio
+  señal/ruido importa.
 """)
 
 
@@ -698,7 +842,7 @@ def exp12_phase_vs_depolar():
 """)
 
     base_kwargs = dict(
-        pulses=8_000,
+        pulses=2_000,
         clock_rate_hz=1_000_000.0,
         seed=1100,
         post_processing=PostProcessingConfig(qber_abort_threshold=None),
@@ -762,7 +906,7 @@ def exp13_statistical_variance():
             )
             r = run(scenario)
             print(
-                f"  {n_pulses:8d} | {seed:5d} | {r['qber']:8.4f} | "
+                f"  {n_pulses:8d} | {seed:5d} | {qber_text(r)} | "
                 f"{r['sifted']:8d} | {r['errors']:8d}"
             )
         print()
@@ -836,8 +980,8 @@ def exp14_abort_vs_zero_key():
         r = run(scenario)
         abort_str = "   YES" if r["abort"] else "    no"
         print(
-            f"  {label:<40} | {r['qber']:8.4f} | {r['sifted']:8d} | "
-            f"{r['secret_bps']:12.2f} | {abort_str}"
+            f"  {label:<40} | {qber_text(r)} | {r['sifted']:8d} | "
+            f"{rate_text(r)} | {abort_str}"
         )
 
     print("""
@@ -858,12 +1002,13 @@ def exp15_decoy_vacuum_gain():
     print("""
   HIPÓTESIS INGENUA: un pulso vacío (μ=0) no puede generar ninguna detección.
   REALIDAD: dark counts y background radiation generan clicks incluso sin señal.
-  El gain del vacuum state mide exactamente la tasa de ruido del detector.
-  Si Eve bloquea pulsos vacíos, el gain del vacuum cae abruptamente (detectable).
+  El gain del vacuum state estima la probabilidad de clic de fondo por ventana.
+  Eve no puede reducir el dark count local de Bob limitándose a «bloquear» un
+  pulso que ya estaba vacío; una inyección de luz sí podría elevar este gain.
 """)
 
     base_kwargs = dict(
-        pulses=8_000,
+        pulses=2_000,
         clock_rate_hz=1_000_000.0,
         seed=1400,
         channel=ChannelConfig(kind="fiber", distance_km=5.0, attenuation_db_km=0.2),
@@ -909,11 +1054,7 @@ def exp15_decoy_vacuum_gain():
                 gate_width_s=1e-9,
             ),
         )
-        from qiskit_qkd import QiskitSamplerBackend
-        backend = QiskitSamplerBackend(
-            seed=scenario.seed, max_circuits_per_job=512, max_recorded_results=0
-        )
-        result = BB84Protocol().run(scenario, backend=backend)
+        result = run_result(scenario)
         vac = result.decoy.get("vacuum", {})
         sig = result.decoy.get("signal", {})
         vac_gain = vac.get("gain", 0.0)
@@ -925,33 +1066,34 @@ def exp15_decoy_vacuum_gain():
         )
 
     print("""
-  CONCLUSIÓN: el gain del vacuum state = (dark_count_rate * gate_width) +
-  (background_rate * gate_width). Este número permite a Alice y Bob estimar
-  el ruido real del sistema. Si Eve bloquea pulsos vacíos y los reenvía,
-  el vacuum gain sería 0 → anomalía detectable.
+  CONCLUSIÓN: para probabilidades pequeñas, el gain de vacío se aproxima por
+  (dark_count_rate + background_rate) * gate_width; la expresión exacta del
+  modelo combina las probabilidades de no-clic. Este observable permite
+  estimar el fondo, pero no identifica por sí solo su causa.
 """)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # EXPERIMENTO 16
-# "Depolarizing completo: QBER fijo en 25%, NO en 50% como se esperaría"
+# "Depolarizing completo: tras el cribado, QBER tiende a 50%"
 # ═════════════════════════════════════════════════════════════════════════════
 def exp16_full_depolar_qber():
-    header("EXP 16 – Depolarizing total: QBER=0.25, no 0.50 como intuye la gente")
+    header("EXP 16 – Depolarizing total: QBER post-cribado cercana a 50%")
 
     print("""
   HIPÓTESIS INGENUA: si el canal despolariza completamente (p=1), todos los
-  bits serán erróneos → QBER=1.0 o al menos 0.5.
+  bits serán erróneos → QBER=1.0.
   REALIDAD: el canal despolarizante con p=1 produce una mezcla completa:
   ρ → I/2 (mezcla máxima). Medir I/2 en cualquier base da 50/50 aleatoriamente.
-  Solo la mitad de esos resultados aleatorios discrepan de Alice → QBER=0.25.
+  Después de conservar únicamente las bases coincidentes, la mitad de esos
+  resultados discrepa de Alice → QBER post-cribado ≈ 0.5.
 
   (Esto se observa en el simulador Aer. En el modelo clásico el efecto puede
    diferir ligeramente según la implementación.)
 """)
 
     base_kwargs = dict(
-        pulses=8_000,
+        pulses=2_000,
         clock_rate_hz=1_000_000.0,
         seed=1600,
         post_processing=PostProcessingConfig(qber_abort_threshold=None),
@@ -970,9 +1112,9 @@ def exp16_full_depolar_qber():
 
     print("""
   CONCLUSIÓN: con depolarizing_probability=1.0 el estado es completamente
-  mixto → probabilidad 1/2 en cada medición → QBER = 0.25 (igual que Eve
-  al 100%). El canal totalmente ruidoso es equivalente a un ataque de escucha.
-  Esto es un resultado fundamental de la teoría de información cuántica.
+  mixto → probabilidad 1/2 en cada medición → QBER post-cribado ≈ 0.5. Esto no
+  es equivalente a interceptar y reenviar todos los pulsos: ese ataque produce
+  aproximadamente 0.25 de QBER y, además, deja información y metadatos de Eve.
 """)
 
 
@@ -987,14 +1129,14 @@ def exp17_readout_vs_channel_noise():
   HIPÓTESIS INGENUA: si el QBER es el mismo, el origen del error no importa.
   REALIDAD: el readout_error se aplica DESPUÉS de la medición cuántica
   (inversión clásica del bit), mientras el depolarizing ocurre DURANTE el
-  transporte cuántico. Aunque el QBER sea idéntico, las correlaciones entre
-  errores son distintas y afectan la reconciliación de distinta manera.
-  Para la tasa de clave secreta (asintótica) son idénticos, pero para bloques
-  finitos la corrección de errores puede diferir.
+  transporte cuántico. Sus parámetros pueden ajustarse para producir una QBER
+  agregada parecida, pero las distribuciones condicionadas y los metadatos no
+  son idénticos. Una fórmula asintótica que solo recibe la QBER puede devolver
+  el mismo diagnóstico; eso no hace equivalentes los procesos físicos.
 """)
 
     base_kwargs = dict(
-        pulses=8_000,
+        pulses=2_000,
         clock_rate_hz=1_000_000.0,
         seed=1700,
         post_processing=PostProcessingConfig(qber_abort_threshold=None),
@@ -1030,7 +1172,29 @@ def exp17_readout_vs_channel_noise():
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent / "artifacts" / "experimentos_inesperados",
+        help="directorio para el artefacto reproducible JSON/CSV",
+    )
+    parser.add_argument("--no-artifacts", action="store_true")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
+    _ARTIFACT_ROWS.clear()
+    _ARTIFACT_SCENARIOS.clear()
+    if args.no_artifacts:
+        print(
+            "WARNING: --no-artifacts opt-out disables the reproducibility "
+            "manifest and CSV for this run.",
+            file=sys.stderr,
+        )
+    _configure_console_output()
     print(SEPARATOR)
     print("  SUITE DE EXPERIMENTOS BB84 – RESULTADOS INESPERADOS PERO EXPLICABLES")
     print(f"  {17} experimentos – protocolo QKD con Qiskit")
@@ -1065,6 +1229,20 @@ def main() -> None:
     print(f"\n{SEPARATOR}")
     print("  FIN DE LA SUITE DE EXPERIMENTOS")
     print(SEPARATOR)
+    if not args.no_artifacts:
+        try:
+            paths = write_artifact(
+                args.output_dir,
+                name="experimentos_inesperados",
+                rows=_ARTIFACT_ROWS,
+                scenarios=_ARTIFACT_SCENARIOS,
+                generator_path=__file__,
+                command=[sys.executable, __file__, *sys.argv[1:]],
+            )
+            print(f"\nArtifact: {paths.manifest}")
+            print(f"CSV: {paths.csv}")
+        except OSError as exc:
+            print(f"\nNo se pudo escribir el artefacto: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

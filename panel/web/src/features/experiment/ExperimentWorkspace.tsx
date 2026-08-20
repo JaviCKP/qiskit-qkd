@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { CheckCircle2, Play, Save, Wrench } from 'lucide-react'
 
 import {
   ApiError,
@@ -137,21 +138,37 @@ export function ExperimentWorkspace({
         validationIssues={validationIssues}
         workflowStates={workflowStates}
       />
-      <div className="sticky bottom-3 z-20 mx-4 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan/25 bg-surface/95 px-3 py-2 shadow-2xl backdrop-blur sm:mx-6">
-        <span className="text-xs text-slate-400">{hasUnsavedChanges ? 'Cambios pendientes de guardar' : dirty ? 'Draft distinto al último run' : 'Listo para ejecutar'}</span>
+      <div className="sticky bottom-3 z-20 mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-panel border border-cyan/25 bg-surface/95 px-4 py-2.5 shadow-lifted backdrop-blur-xl sm:mx-6">
+        <span className="flex items-center gap-2 text-xs">
+          <span
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 rounded-full ${hasUnsavedChanges || dirty ? 'bg-warning' : 'bg-success'}`}
+          />
+          <span className={hasUnsavedChanges || dirty ? 'text-warning' : 'text-slate-400'}>
+            {hasUnsavedChanges
+              ? 'Cambios pendientes de guardar'
+              : dirty
+                ? 'El borrador ya no coincide con el último run'
+                : 'Listo para ejecutar'}
+          </span>
+        </span>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={save.isPending || !experimentName.trim()} onClick={() => save.mutate()} size="sm" tone="success" type="button">
-            Guardar
+          <Button disabled={!experimentName.trim()} loading={save.isPending} onClick={() => save.mutate()} size="sm" tone="success" type="button">
+            <Save aria-hidden="true" size={14} /> Guardar
           </Button>
           <Button disabled={offline} onClick={() => window.dispatchEvent(new Event('qkd:request-run'))} size="sm" tone="primary" type="button">
-            Ejecutar
+            <Play aria-hidden="true" size={14} /> Ejecutar
           </Button>
         </div>
       </div>
       <div className="space-y-6 px-4 py-5 sm:px-6 lg:py-7">
         {save.data ? (
-          <p aria-live="polite" className="text-sm text-success">
-            Experimento guardado como <span className="font-mono">{save.data.experiment.id}</span>.
+          <p
+            aria-live="polite"
+            className="flex animate-fade-up items-center gap-2 rounded-panel border border-success/40 bg-success/5 px-4 py-3 text-sm text-success"
+          >
+            <CheckCircle2 aria-hidden="true" className="shrink-0" size={16} />
+            <span>Experimento guardado como <span className="font-mono">{save.data.experiment.id}</span>.</span>
           </p>
         ) : null}
         {save.error ? <ApiErrorSummary error={save.error} /> : null}
@@ -185,10 +202,15 @@ export function ExperimentWorkspace({
           />
         </div>
 
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/60 px-4 py-3" aria-label="Modo de edición">
-          <div>
-            <p className="text-sm font-medium text-white">Inspector técnico</p>
-            <p className="mt-1 text-xs text-slate-400">Abre todos los controles del catálogo sin perder el cockpit.</p>
+        <section aria-label="Modo de edición" className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface/60 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-control border transition-colors ${expertMode ? 'border-cyan/40 bg-cyan/10 text-cyan' : 'border-border bg-background/60 text-slate-500'}`}>
+              <Wrench aria-hidden="true" size={16} />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-white">Inspector técnico</p>
+              <p className="mt-0.5 text-xs text-slate-400">Abre todos los controles del catálogo sin perder el cockpit.</p>
+            </div>
           </div>
           <Button aria-pressed={expertMode} onClick={() => setExpertMode((value) => !value)} size="sm" tone={expertMode ? 'primary' : 'neutral'} type="button">
             {expertMode ? 'Cerrar modo experto' : 'Abrir modo experto'}

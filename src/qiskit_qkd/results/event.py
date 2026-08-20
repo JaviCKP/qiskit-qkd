@@ -31,6 +31,20 @@ TIMING_STATUSES = {
 }
 
 
+def _strip_eve_fields(value: Any) -> Any:
+    """Copy JSON-like event data without simulator-side Eve fields."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: _strip_eve_fields(item)
+            for key, item in value.items()
+            if not (isinstance(key, str) and key.startswith("eve_"))
+        }
+    if isinstance(value, list):
+        return [_strip_eve_fields(item) for item in value]
+    return value
+
+
 def _validate_bit(name: str, value: int | None) -> int | None:
     if value is None:
         return None
@@ -292,6 +306,22 @@ class Event:
             "eve_detectable": self.eve_detectable,
             "tags": self.tags,
         }
+
+    def to_observed_dict(self) -> JSONObject:
+        """Return this event as observed by Alice and Bob.
+
+        Legacy ``to_dict`` continues to expose Eve trace fields so archived
+        results round-trip.  The explicit observed view removes those fields,
+        including nested ``tags`` entries, instead of silently leaking the
+        simulator's adversary oracle to protocol participants.
+        """
+
+        return _strip_eve_fields(self.to_dict())
+
+    def to_internal_diagnostics_dict(self) -> JSONObject:
+        """Return the full simulator-side event trace, including Eve fields."""
+
+        return self.to_dict()
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:

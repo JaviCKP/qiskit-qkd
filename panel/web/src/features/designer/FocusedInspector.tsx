@@ -94,7 +94,7 @@ export function FocusedInspector({
       <div className="border-b border-border px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+            <p className="text-2xs font-semibold uppercase tracking-[0.1em] text-slate-500">
               Configuración técnica
             </p>
             <h2 className="mt-1 text-base font-semibold text-white">Recorrido físico del experimento</h2>
@@ -201,7 +201,7 @@ function InspectorField({
           </label>
           <p className="mt-1 text-xs leading-5 text-slate-500">{descriptionFor(field)}</p>
         </div>
-        <span className={`shrink-0 rounded-control border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] ${edited ? 'border-cyan/40 text-cyan' : 'border-border text-slate-500'}`}>
+        <span className={`shrink-0 rounded-control border px-1.5 py-0.5 text-2xs uppercase tracking-[0.08em] ${edited ? 'border-cyan/40 text-cyan' : 'border-border text-slate-500'}`}>
           {edited ? 'usuario' : 'preset'}
         </span>
       </div>
@@ -209,7 +209,7 @@ function InspectorField({
         <FieldControl disabled={disabled} field={field} id={controlId} onChange={onChange} value={value} />
         {field.unit ? <span className="mt-2.5 w-16 shrink-0 text-xs text-slate-500">{field.unit}</span> : null}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-slate-600">
         <span>Rango {rangeLabel(field)}</span>
         <span>Por defecto {formatInputValue(field.default) || '—'}</span>
         {mode === 'advanced' ? <code className="break-all">{field.key}</code> : null}

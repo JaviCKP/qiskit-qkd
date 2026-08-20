@@ -22,6 +22,7 @@ from qiskit_qkd._validation import (
     require_positive_int,
     require_probability,
 )
+from qiskit_qkd.channel_core import PreparedState
 from qiskit_qkd.provenance import backend_provenance
 from qiskit_qkd.qiskit_integration import CircuitFactory, TranspilationOptions
 from qiskit_qkd.qiskit_integration.transpilation import (
@@ -39,28 +40,132 @@ def _qiskit_aer_version() -> str | None:
 def scenario_requires_aer_noise(scenario: Any) -> bool:
     """Return whether a scenario has Aer-level quantum/readout noise enabled."""
 
+    alice_readout, bob_readout = _scenario_detector_readout_probabilities(scenario)
     return (
         scenario.channel.depolarizing_probability > 0.0
         or scenario.channel.phase_damping_probability > 0.0
-        or scenario.detector.readout_error_probability > 0.0
+        or alice_readout > 0.0
+        or bob_readout > 0.0
     )
 
 
-def backend_from_scenario(scenario: Any) -> QiskitSamplerBackend:
-    """Build the default backend implied by scenario-level Qiskit noise fields."""
+def _scenario_detector_readout_probabilities(scenario: Any) -> tuple[float, float]:
+    """Return effective Alice/Bob readout probabilities for ``scenario``."""
 
-    if not scenario_requires_aer_noise(scenario):
-        return QiskitSamplerBackend(seed=scenario.seed)
+    global_probability = float(scenario.detector.readout_error_probability)
+    alice_probability = global_probability
+    bob_probability = global_probability
+    protocol_name = getattr(
+        getattr(scenario, "protocol", None),
+        "name",
+        "",
+    ).lower()
+    e91 = getattr(scenario, "e91", None)
+    if protocol_name == "e91" and e91 is not None:
+        alice_probability = float(
+            e91.detector_for_alice(scenario.detector).readout_error_probability,
+        )
+        bob_probability = float(
+            e91.detector_for_bob(scenario.detector).readout_error_probability,
+        )
+    return alice_probability, bob_probability
 
-    from qiskit_qkd.qiskit_integration.noise import AerNoiseModelAdapter
 
-    adapter = AerNoiseModelAdapter.from_scenario(scenario)
-    return QiskitSamplerBackend(
-        seed=scenario.seed,
-        seed_simulator=scenario.seed,
-        noise_model=adapter.noise_model,
-        noise_summary=adapter.summary(),
+def _scenario_aer_signature(scenario: Any) -> tuple[float, float, float, float, float]:
+    """Return the scenario fields that must be represented by Aer."""
+
+    alice_readout, bob_readout = _scenario_detector_readout_probabilities(scenario)
+    protocol_name = getattr(
+        getattr(scenario, "protocol", None),
+        "name",
+        "",
+    ).lower()
+    return (
+        float(scenario.channel.depolarizing_probability),
+        float(scenario.channel.phase_damping_probability),
+        (
+            float(scenario.detector.readout_error_probability)
+            if protocol_name != "e91"
+            else 0.0
+        ),
+        alice_readout,
+        bob_readout,
     )
+
+
+def _validate_backend_compatibility(scenario: Any, backend: Any) -> None:
+    """Reject a backend whose noise boundary cannot execute ``scenario``."""
+
+    requires_aer = scenario_requires_aer_noise(scenario)
+    has_noise_model = getattr(backend, "noise_model", None) is not None
+    if requires_aer and not has_noise_model:
+        raise ValueError(
+            "scenario requires Qiskit Aer noise for channel/detector fields; "
+            "the supplied backend has no noise_model. Pass no backend to let "
+            "backend_from_scenario build one, or provide an Aer-compatible "
+            "backend with noise_model."
+        )
+    if requires_aer and getattr(backend, "_sampler_provided", False):
+        sampler = getattr(backend, "sampler", None)
+        sampler_module = type(sampler).__module__
+        if not sampler_module.startswith("qiskit_aer"):
+            raise ValueError(
+                "scenario requires Aer noise, but the supplied backend uses "
+                f"non-Aer sampler {type(sampler).__name__}; provide an Aer "
+                "SamplerV2 or let backend_from_scenario construct it"
+            )
+    if not requires_aer and has_noise_model:
+        raise ValueError(
+            "scenario has no Aer quantum/readout noise, but the supplied "
+            "backend has a noise_model. Use an ideal backend or pass no backend "
+            "so the scenario factory can select the correct execution path."
+        )
+
+    configured_signature = getattr(
+        backend,
+        "_configured_scenario_aer_signature",
+        None,
+    )
+    if configured_signature is not None:
+        requested_signature = _scenario_aer_signature(scenario)
+        if configured_signature != requested_signature:
+            raise ValueError(
+                "supplied Qiskit backend was already configured for a different "
+                "scenario Aer-noise signature; create a fresh backend from the "
+                "new Scenario instead of reusing it"
+            )
+
+
+def backend_from_scenario(
+    scenario: Any,
+    backend: QiskitSamplerBackend | Any | None = None,
+) -> QiskitSamplerBackend | Any:
+    """Resolve one backend path for a scenario.
+
+    With no explicit backend, this constructs the ideal or Aer-backed sampler
+    implied by the scenario.  An explicit backend remains supported for custom
+    samplers/shots/transpilation, but must have the same Aer/no-Aer boundary and
+    cannot be reused after being configured for different scenario noise.
+    """
+
+    if backend is None:
+        if not scenario_requires_aer_noise(scenario):
+            backend = QiskitSamplerBackend(seed=scenario.seed)
+        else:
+            from qiskit_qkd.qiskit_integration.noise import AerNoiseModelAdapter
+
+            adapter = AerNoiseModelAdapter.from_scenario(scenario)
+            backend = QiskitSamplerBackend(
+                seed=scenario.seed,
+                seed_simulator=scenario.seed,
+                noise_model=adapter.noise_model,
+                noise_summary=adapter.summary(),
+            )
+
+    _validate_backend_compatibility(scenario, backend)
+    if hasattr(backend, "configure_from_scenario"):
+        backend.configure_from_scenario(scenario)
+    return backend
 
 
 class QiskitSamplerBackend:
@@ -132,6 +237,9 @@ class QiskitSamplerBackend:
         )
         self._transpilation_backend: Any | None = None
         self._sampler_provided = sampler is not None
+        self._configured_scenario_aer_signature: (
+            tuple[float, float, float, float, float] | None
+        ) = None
         self.primitive_seed = (
             None
             if self._sampler_provided
@@ -178,37 +286,73 @@ class QiskitSamplerBackend:
 
     def measure_bb84_batch(
         self,
-        rounds: Sequence[tuple[int, str, str]],
+        rounds: Sequence[tuple[int, str, str] | tuple[PreparedState, str]],
         *,
         cancellation_check: Callable[[], None] | None = None,
     ) -> tuple[int, ...]:
         """Measure BB84 pulses in primitive jobs and return Bob's bits in order."""
 
         measured_bits: list[int] = []
+        normalized_rounds: list[tuple[int, str, str, PreparedState | None]] = []
+        for round_ in rounds:
+            if len(round_) == 2 and isinstance(round_[0], PreparedState):
+                state, bob_basis = round_
+                normalized_rounds.append(
+                    (
+                        (
+                            state.prepared_bit
+                            if state.preparation_error_applied
+                            else state.alice_bit
+                        ),
+                        state.alice_basis,
+                        bob_basis,
+                        state,
+                    ),
+                )
+            elif len(round_) == 3:
+                bit, alice_basis, bob_basis = round_
+                normalized_rounds.append((bit, alice_basis, bob_basis, None))
+            else:
+                raise ValueError(
+                    "BB84 rounds must be (bit, alice_basis, bob_basis) or "
+                    "(PreparedState, bob_basis)",
+                )
         for start in range(0, len(rounds), self.max_circuits_per_job):
             if cancellation_check is not None:
                 cancellation_check()
-            batch = rounds[start : start + self.max_circuits_per_job]
+            batch = normalized_rounds[start : start + self.max_circuits_per_job]
             if self._can_sample_noiseless_statevector():
                 specifications = [
                     (
                         bit,
                         alice_basis,
                         bob_basis,
-                        self._sample_preparation_error(),
+                        (prepared_state.preparation_error
+                         and not prepared_state.preparation_error_applied
+                         if prepared_state is not None
+                        else self._sample_preparation_error()),
+                        prepared_state is not None and prepared_state.preparation_error,
                     )
-                    for bit, alice_basis, bob_basis in batch
+                    for bit, alice_basis, bob_basis, prepared_state in batch
                 ]
                 circuits_by_specification: dict[
-                    tuple[int, str, str, bool],
+                    tuple[int, str, str, bool, bool],
                     tuple[QuantumCircuit, dict[str, float]],
                 ] = {}
-                for specification in specifications:
+                for specification, _round_data in zip(
+                    specifications,
+                    batch,
+                    strict=True,
+                ):
                     cached = circuits_by_specification.get(specification)
                     if cached is None:
-                        bit, alice_basis, bob_basis, preparation_bit_flip = (
-                            specification
-                        )
+                        (
+                            bit,
+                            alice_basis,
+                            bob_basis,
+                            preparation_bit_flip,
+                            source_preparation_error,
+                        ) = specification
                         circuit = CircuitFactory.bb84_prepare_measure(
                             bit,
                             alice_basis,
@@ -217,6 +361,9 @@ class QiskitSamplerBackend:
                             channel_rotation_y_rad=self.channel_rotation_y_rad,
                             channel_rotation_z_rad=self.channel_rotation_z_rad,
                         )
+                        if source_preparation_error:
+                            circuit.metadata = dict(circuit.metadata or {})
+                            circuit.metadata["preparation_error"] = True
                         probabilities = self._statevector_probabilities(circuit)
                         circuits_by_specification[specification] = (
                             circuit,
@@ -242,12 +389,26 @@ class QiskitSamplerBackend:
                     bit,
                     alice_basis,
                     bob_basis,
-                    preparation_bit_flip=self._sample_preparation_error(),
+                    preparation_bit_flip=(
+                        prepared_state.preparation_error
+                        and not prepared_state.preparation_error_applied
+                        if prepared_state is not None
+                        else self._sample_preparation_error()
+                    ),
                     channel_rotation_y_rad=self.channel_rotation_y_rad,
                     channel_rotation_z_rad=self.channel_rotation_z_rad,
                 )
-                for bit, alice_basis, bob_basis in batch
+                for bit, alice_basis, bob_basis, prepared_state in batch
             ]
+            for circuit, (_bit, _basis, _bob_basis, prepared_state) in zip(
+                circuits,
+                batch,
+                strict=True,
+            ):
+                if prepared_state is not None and prepared_state.preparation_error:
+                    circuit.metadata = dict(circuit.metadata or {})
+                    circuit.metadata["preparation_error"] = True
+                    circuit.metadata["prepared_bit"] = prepared_state.prepared_bit
             self.constructed_circuit_count += len(circuits)
             if not circuits:
                 if cancellation_check is not None:
@@ -263,6 +424,23 @@ class QiskitSamplerBackend:
             if cancellation_check is not None:
                 cancellation_check()
         return tuple(measured_bits)
+
+    def measure_bb84_prepared_batch(
+        self,
+        rounds: Sequence[tuple[PreparedState, str]],
+        *,
+        cancellation_check: Callable[[], None] | None = None,
+    ) -> tuple[int, ...]:
+        """Measure states whose source preparation was already sampled.
+
+        Unlike the legacy ``(bit, basis, basis)`` API this path never samples
+        ``preparation_error_probability`` inside the backend.
+        """
+
+        return self.measure_bb84_batch(
+            rounds,
+            cancellation_check=cancellation_check,
+        )
 
     def measure_e91_batch(
         self,
@@ -484,6 +662,7 @@ class QiskitSamplerBackend:
     def configure_from_scenario(self, scenario: Any) -> None:
         """Bind scenario-level source/channel quantum imperfections."""
 
+        _validate_backend_compatibility(scenario, self)
         self.reset_execution_summary()
         self.preparation_error_probability = require_probability(
             "preparation_error_probability",
@@ -503,6 +682,7 @@ class QiskitSamplerBackend:
         )
         self._preparation_rng = random.Random(scenario.seed + 0x51A7E)
         self._measurement_rng = random.Random(scenario.seed + 0xE91)
+        self._configured_scenario_aer_signature = _scenario_aer_signature(scenario)
 
     def qiskit_summary(self, *, sample_size: int = 16) -> JSONObject:
         """Return a JSON-safe summary of the latest primitive execution."""

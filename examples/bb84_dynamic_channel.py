@@ -12,10 +12,10 @@ from qiskit_qkd import (
     ExponentialRampProfile,
     ParameterSchedule,
     PostProcessingConfig,
-    QiskitSamplerBackend,
     Scenario,
 )
 from qiskit_qkd.analysis import sweep_bb84_time
+from qiskit_qkd.backends import backend_from_scenario
 
 
 def main() -> None:
@@ -60,11 +60,7 @@ def main() -> None:
         BB84Protocol(),
         scenario,
         time_points_s,
-        backend_factory=lambda run_scenario: QiskitSamplerBackend(
-            seed=run_scenario.seed,
-            max_circuits_per_job=512,
-            max_recorded_results=0,
-        ),
+        backend_factory=lambda run_scenario: _backend_for_scenario(run_scenario),
     )
 
     print("BB84 dynamic channel characterization")
@@ -82,6 +78,13 @@ def main() -> None:
             f"{bb84_row['sifted']:8d} "
             f"{bb84_row['secret_key_rate_bps']:11.2f}",
         )
+
+def _backend_for_scenario(scenario: Scenario):
+    backend = backend_from_scenario(scenario)
+    # Preserve the sweep's bounded job/recording configuration.
+    backend.max_circuits_per_job = 512
+    backend.max_recorded_results = 0
+    return backend
 
 
 if __name__ == "__main__":
